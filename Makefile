@@ -5,6 +5,7 @@ SDL_LIBS := $(shell sdl2-config --libs)
 
 SRC := $(wildcard src/*.cpp src/*/*.cpp)
 OBJ := $(SRC:src/%.cpp=build/%.o)
+DEP := $(OBJ:.o=.d)
 BIN := build/ascii3d
 
 all: $(BIN)
@@ -14,7 +15,7 @@ $(BIN): $(OBJ)
 
 build/%.o: src/%.cpp | build
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) -MMD -MP -c -o $@ $<
 
 build:
 	mkdir -p build
@@ -24,5 +25,7 @@ run: $(BIN)
 
 clean:
 	rm -rf build
+
+-include $(DEP)
 
 .PHONY: all run clean

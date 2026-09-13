@@ -1,5 +1,6 @@
 #include "Game.h"
 #include "Sprite.h"
+#include <SDL.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -20,26 +21,29 @@ Game::Game(const std::string& mapPath) {
     map_.load(mapPath);
 }
 
-void Game::handleEvent(const SDL_Event& event) {
-    switch (event.type) {
-        case SDL_QUIT:
-            running_ = false;
-            break;
-        case SDL_KEYDOWN:
-            switch (event.key.keysym.sym) {
-                case SDLK_ESCAPE: running_ = false; break;
-                case SDLK_TAB: showMinimap_ = !showMinimap_; break;
-                case SDLK_F11: renderer_.toggleFullscreen(); break;
-                case SDLK_LEFTBRACKET:
-                    player_.fov = std::max(kMinFov, player_.fov - 5.0f);
-                    break;
-                case SDLK_RIGHTBRACKET:
-                    player_.fov = std::min(kMaxFov, player_.fov + 5.0f);
-                    break;
-                default: break;
-            }
-            break;
-        default: break;
+void Game::handleEvents() {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+            case SDL_QUIT:
+                running_ = false;
+                break;
+            case SDL_KEYDOWN:
+                switch (event.key.keysym.sym) {
+                    case SDLK_ESCAPE: running_ = false; break;
+                    case SDLK_TAB: showMinimap_ = !showMinimap_; break;
+                    case SDLK_F11: window_.toggleFullscreen(); break;
+                    case SDLK_LEFTBRACKET:
+                        player_.fov = std::max(kMinFov, player_.fov - 5.0f);
+                        break;
+                    case SDLK_RIGHTBRACKET:
+                        player_.fov = std::min(kMaxFov, player_.fov + 5.0f);
+                        break;
+                    default: break;
+                }
+                break;
+            default: break;
+        }
     }
 }
 
@@ -86,7 +90,7 @@ void Game::render() {
     grid_.set(cx, cy, '+', {255, 255, 255}, {0, 0, 0});
 
     drawHud();
-    renderer_.present(grid_);
+    window_.present(grid_);
 }
 
 void Game::drawHud() {
@@ -108,7 +112,7 @@ int Game::run() {
         std::cerr << "error: " << map_.error() << "\n";
         return 1;
     }
-    if (!renderer_.ok()) {
+    if (!window_.ok()) {
         std::cerr << "error: cannot create window: " << SDL_GetError() << "\n";
         return 1;
     }
@@ -125,10 +129,9 @@ int Game::run() {
             fps_ = fps_ == 0.0f ? 1.0f / dt : fps_ * 0.9f + 0.1f / dt;
         }
 
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) handleEvent(event);
+        handleEvents();
 
-        grid_.resize(renderer_.cols(), std::max(3, renderer_.rows() - 1));
+        grid_.resize(window_.cols(), std::max(3, window_.rows() - 1));
         grid_.clear();
         update(dt);
         render();

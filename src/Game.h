@@ -4,12 +4,12 @@
 #include "Minimap.h"
 #include "Player.h"
 #include "Raycaster.h"
-#include "Renderer.h"
+#include "platform/Window.h"
 #include <chrono>
 #include <string>
 #include <vector>
 
-// Wires SDL events, simulation and rendering together and runs the main loop.
+// Wires input, simulation and rendering together and runs the main loop.
 class Game {
 public:
     explicit Game(const std::string& mapPath);
@@ -18,7 +18,7 @@ public:
 private:
     using Clock = std::chrono::steady_clock;
 
-    void handleEvent(const SDL_Event& event);
+    void handleEvents();
     Vec2 readWish() const;
     void update(float dt);
     void render();
@@ -26,7 +26,7 @@ private:
 
     Map map_;
     Player player_;
-    Renderer renderer_;
+    Window window_;
     Raycaster raycaster_;
     Minimap minimap_;
     CharGrid grid_;

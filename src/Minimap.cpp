@@ -1,5 +1,5 @@
 #include "Minimap.h"
-#include "CharGrid.h"
+#include "render/CharGrid.h"
 #include "core/Color.h"
 #include "Map.h"
 #include "Player.h"

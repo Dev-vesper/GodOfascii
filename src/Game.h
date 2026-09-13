@@ -1,9 +1,9 @@
 #pragma once
-#include "CharGrid.h"
+#include "render/CharGrid.h"
 #include "Map.h"
 #include "Minimap.h"
 #include "Player.h"
-#include "Raycaster.h"
+#include "render/Raycaster.h"
 #include "platform/Input.h"
 #include "platform/Window.h"
 #include <chrono>

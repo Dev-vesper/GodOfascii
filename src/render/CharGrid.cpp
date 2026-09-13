@@ -1,4 +1,4 @@
-#include "CharGrid.h"
+#include "render/CharGrid.h"
 #include <algorithm>
 
 void CharGrid::resize(int width, int height) {

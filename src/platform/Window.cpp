@@ -1,6 +1,6 @@
 #include "platform/Window.h"
 #include "platform/Font8x8.h"
-#include "CharGrid.h"
+#include "render/CharGrid.h"
 #include <SDL.h>
 
 namespace {

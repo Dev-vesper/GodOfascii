@@ -1,5 +1,5 @@
 #include "Game.h"
-#include "Sprite.h"
+#include "render/Sprite.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>

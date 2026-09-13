@@ -1,6 +1,5 @@
 #include "Game.h"
 #include "Sprite.h"
-#include <SDL.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -21,49 +20,28 @@ Game::Game(const std::string& mapPath) {
     map_.load(mapPath);
 }
 
-void Game::handleEvents() {
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        switch (event.type) {
-            case SDL_QUIT:
-                running_ = false;
-                break;
-            case SDL_KEYDOWN:
-                switch (event.key.keysym.sym) {
-                    case SDLK_ESCAPE: running_ = false; break;
-                    case SDLK_TAB: showMinimap_ = !showMinimap_; break;
-                    case SDLK_F11: window_.toggleFullscreen(); break;
-                    case SDLK_LEFTBRACKET:
-                        player_.fov = std::max(kMinFov, player_.fov - 5.0f);
-                        break;
-                    case SDLK_RIGHTBRACKET:
-                        player_.fov = std::min(kMaxFov, player_.fov + 5.0f);
-                        break;
-                    default: break;
-                }
-                break;
-            default: break;
-        }
+void Game::pollInput() {
+    input_.beginFrame();
+    if (input_.triggered(Action::Quit)) {
+        running_ = false;
+        return;
+    }
+    if (input_.triggered(Action::ToggleMinimap)) showMinimap_ = !showMinimap_;
+    if (input_.triggered(Action::ToggleFullscreen)) window_.toggleFullscreen();
+    if (input_.triggered(Action::FovNarrow)) {
+        player_.fov = std::max(kMinFov, player_.fov - 5.0f);
+    }
+    if (input_.triggered(Action::FovWiden)) {
+        player_.fov = std::min(kMaxFov, player_.fov + 5.0f);
     }
 }
 
-Vec2 Game::readWish() const {
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
-    Vec2 wish{};
-    if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]) wish.y += 1.0f;
-    if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]) wish.y -= 1.0f;
-    if (keys[SDL_SCANCODE_D]) wish.x += 1.0f;
-    if (keys[SDL_SCANCODE_A]) wish.x -= 1.0f;
-    return length(wish) > 0.0f ? normalized(wish) : wish;
-}
-
 void Game::update(float dt) {
-    int mx = 0;
-    int my = 0;
-    SDL_GetRelativeMouseState(&mx, &my);
+    const int mx = input_.mouseDx();
+    const int my = input_.mouseDy();
     if (mx != 0 || my != 0) player_.turn(mx, my);
 
-    player_.update(dt, readWish(), map_);
+    player_.update(dt, input_.wish(), map_);
 
     // Push the player out of crystal sprites.
     for (const Vec2& c : map_.crystals()) {
@@ -113,7 +91,7 @@ int Game::run() {
         return 1;
     }
     if (!window_.ok()) {
-        std::cerr << "error: cannot create window: " << SDL_GetError() << "\n";
+        std::cerr << "error: cannot create window\n";
         return 1;
     }
     player_.pos = {map_.spawnX(), map_.spawnY()};
@@ -129,7 +107,7 @@ int Game::run() {
             fps_ = fps_ == 0.0f ? 1.0f / dt : fps_ * 0.9f + 0.1f / dt;
         }
 
-        handleEvents();
+        pollInput();
 
         grid_.resize(window_.cols(), std::max(3, window_.rows() - 1));
         grid_.clear();

@@ -4,6 +4,7 @@
 #include "Minimap.h"
 #include "Player.h"
 #include "Raycaster.h"
+#include "platform/Input.h"
 #include "platform/Window.h"
 #include <chrono>
 #include <string>
@@ -18,8 +19,7 @@ public:
 private:
     using Clock = std::chrono::steady_clock;
 
-    void handleEvents();
-    Vec2 readWish() const;
+    void pollInput();
     void update(float dt);
     void render();
     void drawHud();
@@ -27,6 +27,7 @@ private:
     Map map_;
     Player player_;
     Window window_;
+    Input input_;
     Raycaster raycaster_;
     Minimap minimap_;
     CharGrid grid_;

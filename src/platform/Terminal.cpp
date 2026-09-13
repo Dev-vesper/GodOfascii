@@ -387,13 +387,17 @@ void Terminal::pollInput(Input& input) {
 
 void Terminal::present(const CharGrid& grid) {
     std::string out;
-    out.reserve(static_cast<size_t>(grid.width()) * grid.height() * 6 + 16);
-    out += "\x1b[H";  // cursor home
+    out.reserve(static_cast<size_t>(grid.width()) * grid.height() * 6 + 32);
     bool haveFg = false;
     bool haveBg = false;
     Rgb curFg{};
     Rgb curBg{};
     for (int y = 0; y < grid.height(); ++y) {
+        // Absolute row positioning: autowrap is disabled, so the cursor
+        // never moves to the next line on its own.
+        out += "\x1b[";
+        out += std::to_string(y + 1);
+        out += ";1H";
         out += "\x1b[K";  // wipe what a wider previous frame left behind
         for (int x = 0; x < grid.width(); ++x) {
             const Cell& c = grid.at(x, y);

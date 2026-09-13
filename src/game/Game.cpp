@@ -1,5 +1,4 @@
 #include "Game.h"
-#include "platform/SdlDisplay.h"
 #include "render/Sprite.h"
 #include <algorithm>
 #include <chrono>
@@ -14,7 +13,7 @@ constexpr float kMaxFov = 110.0f;
 
 Game::Game(const std::string& mapPath) {
     map_.load(mapPath);
-    display_ = std::make_unique<SdlDisplay>();
+    display_ = Display::create();
 }
 
 void Game::pollInput() {
@@ -68,10 +67,7 @@ int Game::run() {
         std::cerr << "error: " << map_.error() << "\n";
         return 1;
     }
-    if (!display_->ok()) {
-        std::cerr << "error: cannot create window\n";
-        return 1;
-    }
+    if (!display_->ok()) return 1;  // create() printed the reason
     player_.pos = {map_.spawnX(), map_.spawnY()};
     player_.angle = map_.spawnAngle();
 

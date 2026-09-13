@@ -1,0 +1,268 @@
+#include "platform/Terminal.h"
+#include "platform/Input.h"
+#include "render/CharGrid.h"
+#include <chrono>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <unordered_map>
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <termios.h>
+#include <unistd.h>
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+
+// Escape sequences understood by every modern terminal (Windows 10+ too).
+constexpr char kSetup[] =
+    "\x1b[?1049h"   // alternate screen buffer
+    "\x1b[?25l"     // hide cursor
+    "\x1b[?7l"      // disable autowrap
+    "\x1b[?1003h"   // report all mouse motion
+    "\x1b[?1006h";  // ... as SGR sequences
+constexpr char kRestore[] =
+    "\x1b[?1006l\x1b[?1003l\x1b[?7h\x1b[?25h\x1b[?1049l";
+
+// Terminals report no key release; auto-repeat keeps a held key fresh and
+// the weight decays until the next repeat (or fades out after release).
+constexpr auto kKeyFadeMs = std::chrono::milliseconds(350);
+
+termios g_savedTty{};
+bool g_isTty = false;
+
+extern "C" void restoreAndExit(int) {
+    if (g_isTty) tcsetattr(STDIN_FILENO, TCSANOW, &g_savedTty);
+    ssize_t ignored = write(STDOUT_FILENO, kRestore, sizeof(kRestore) - 1);
+    (void)ignored;
+    _exit(1);
+}
+
+void writeAll(const char* s, size_t n) {
+    std::fwrite(s, 1, n, stdout);
+    std::fflush(stdout);
+}
+
+}  // namespace
+
+struct Terminal::Impl {
+    bool ok = false;
+    bool isTty = false;
+    // Key (or arrow sentinel '^'/'v') -> last time it was seen pressed.
+    std::unordered_map<char, Clock::time_point> held;
+    bool haveMouse = false;
+    int lastMx = 0;
+    int lastMy = 0;
+
+    void key(char ch, Input& input);
+    void sequence(const char* params, size_t n, char finalByte, Input& input);
+    void applyHeld(Input& input);
+};
+
+void Terminal::Impl::key(char ch, Input& input) {
+    const auto now = Clock::now();
+    switch (ch) {
+        case 'w': case 'W': held['w'] = now; break;
+        case 's': case 'S': held['s'] = now; break;
+        case 'a': case 'A': held['a'] = now; break;
+        case 'd': case 'D': held['d'] = now; break;
+        case '\t': input.setAction(Action::ToggleMinimap); break;
+        case '[': input.setAction(Action::FovNarrow); break;
+        case ']': input.setAction(Action::FovWiden); break;
+        case '\x03': input.setAction(Action::Quit); break;  // Ctrl+C
+        default: break;
+    }
+}
+
+void Terminal::Impl::sequence(const char* params, size_t n, char finalByte,
+                              Input& input) {
+    if (finalByte == 'A') {
+        held['^'] = Clock::now();  // arrow up
+        return;
+    }
+    if (finalByte == 'B') {
+        held['v'] = Clock::now();  // arrow down
+        return;
+    }
+    if (finalByte != 'M' && finalByte != 'm') return;
+    // SGR mouse report: params = "<" button ";" x ";" y (1-based cells).
+    if (n == 0 || params[0] != '<') return;
+    int b = 0;
+    int x = 0;
+    int y = 0;
+    int* dst = &b;
+    for (size_t i = 1; i < n; ++i) {
+        const char c = params[i];
+        if (c == ';') {
+            if (dst == &b) {
+                dst = &x;
+            } else {
+                dst = &y;
+            }
+        } else if (c >= '0' && c <= '9') {
+            *dst = *dst * 10 + (c - '0');
+        } else {
+            return;
+        }
+    }
+    if ((b & 32) == 0) return;  // only motion events turn the camera
+    if (haveMouse) input.addMouse(x - lastMx, y - lastMy);
+    lastMx = x;
+    lastMy = y;
+    haveMouse = true;
+}
+
+void Terminal::Impl::applyHeld(Input& input) {
+    const auto now = Clock::now();
+    Vec2 wish{};
+    for (auto it = held.begin(); it != held.end();) {
+        const auto age =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now -
+                                                                   it->second);
+        if (age > kKeyFadeMs) {
+            it = held.erase(it);
+            continue;
+        }
+        const float w =
+            1.0f - static_cast<float>(age.count()) /
+                       static_cast<float>(kKeyFadeMs.count());
+        switch (it->first) {
+            case 'w': case '^': wish.y += w; break;
+            case 's': case 'v': wish.y -= w; break;
+            case 'd': wish.x += w; break;
+            case 'a': wish.x -= w; break;
+            default: break;
+        }
+        ++it;
+    }
+    if (length(wish) > 1e-3f) input.setWish(normalized(wish));
+}
+
+Terminal::Terminal(bool allowNonTty) : impl_(std::make_unique<Impl>()) {
+    impl_->isTty = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
+    if (!impl_->isTty && !allowNonTty) return;
+    if (impl_->isTty) {
+        tcgetattr(STDIN_FILENO, &g_savedTty);
+        termios raw = g_savedTty;
+        raw.c_lflag &= ~(ECHO | ICANON | ISIG);
+        raw.c_cc[VMIN] = 0;
+        raw.c_cc[VTIME] = 0;
+        tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+        g_isTty = true;
+    } else {
+        // Forced mode on a pipe: reads must never block.
+        const int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+        fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+    }
+    signal(SIGINT, restoreAndExit);
+    signal(SIGTERM, restoreAndExit);
+    signal(SIGHUP, restoreAndExit);
+    writeAll(kSetup, sizeof(kSetup) - 1);
+    impl_->ok = true;
+}
+
+Terminal::~Terminal() {
+    if (!impl_ || !impl_->ok) return;
+    writeAll(kRestore, sizeof(kRestore) - 1);
+    if (g_isTty) tcsetattr(STDIN_FILENO, TCSANOW, &g_savedTty);
+    g_isTty = false;
+}
+
+bool Terminal::ok() const { return impl_->ok; }
+
+int Terminal::cols() const {
+    winsize ws{};
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != 0 || ws.ws_col == 0) return 80;
+    return ws.ws_col;
+}
+
+int Terminal::rows() const {
+    winsize ws{};
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != 0 || ws.ws_row == 0) return 24;
+    return ws.ws_row;
+}
+
+void Terminal::pollInput(Input& input) {
+    input.reset();
+    char buf[512];
+    const ssize_t n = read(STDIN_FILENO, buf, sizeof buf);
+    if (n == 0 && !impl_->isTty) {  // stdin closed (piped test run ended)
+        input.setAction(Action::Quit);
+        return;
+    }
+    if (n > 0) {
+        const size_t len = static_cast<size_t>(n);
+        size_t i = 0;
+        while (i < len) {
+            const char c = buf[i];
+            if (c != '\x1b') {
+                impl_->key(c, input);
+                ++i;
+                continue;
+            }
+            if (i + 1 >= len) {
+                input.setAction(Action::Quit);  // lone escape byte
+                ++i;
+                continue;
+            }
+            if (buf[i + 1] != '[' && buf[i + 1] != 'O') {
+                impl_->key(buf[i + 1], input);  // Alt-modified key
+                i += 2;
+                continue;
+            }
+            // CSI/SS3 sequence: scan for the final byte (0x40..0x7e).
+            size_t j = i + 2;
+            while (j < len && (buf[j] < 0x40 || buf[j] > 0x7e)) ++j;
+            if (j >= len) break;  // incomplete, wait for the next read
+            impl_->sequence(buf + i + 2, j - (i + 2), buf[j], input);
+            i = j + 1;
+        }
+    }
+    impl_->applyHeld(input);
+}
+
+void Terminal::present(const CharGrid& grid) {
+    std::string out;
+    out.reserve(static_cast<size_t>(grid.width()) * grid.height() * 6 + 16);
+    out += "\x1b[H";  // cursor home
+    bool haveFg = false;
+    bool haveBg = false;
+    Rgb curFg{};
+    Rgb curBg{};
+    for (int y = 0; y < grid.height(); ++y) {
+        out += "\x1b[K";  // wipe what a wider previous frame left behind
+        for (int x = 0; x < grid.width(); ++x) {
+            const Cell& c = grid.at(x, y);
+            if (!haveBg || c.bg.r != curBg.r || c.bg.g != curBg.g ||
+                c.bg.b != curBg.b) {
+                out += "\x1b[48;2;";
+                out += std::to_string(c.bg.r);
+                out += ';';
+                out += std::to_string(c.bg.g);
+                out += ';';
+                out += std::to_string(c.bg.b);
+                out += 'm';
+                curBg = c.bg;
+                haveBg = true;
+            }
+            if (c.ch != ' ' &&
+                (!haveFg || c.fg.r != curFg.r || c.fg.g != curFg.g ||
+                 c.fg.b != curFg.b)) {
+                out += "\x1b[38;2;";
+                out += std::to_string(c.fg.r);
+                out += ';';
+                out += std::to_string(c.fg.g);
+                out += ';';
+                out += std::to_string(c.fg.b);
+                out += 'm';
+                curFg = c.fg;
+                haveFg = true;
+            }
+            out += c.ch;
+        }
+    }
+    out += "\x1b[0m";
+    writeAll(out.data(), out.size());
+}

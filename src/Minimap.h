@@ -1,11 +1,10 @@
 #pragma once
-#include "FrameBuffer.h"
-
+struct CharGrid;
 class Map;
 class Player;
 
-// Small top-down overlay of the map with the player marker.
+// Small top-down overlay of the map with the player marker and crystals.
 class Minimap {
 public:
-    void render(FrameBuffer& fb, const Map& map, const Player& player) const;
+    void render(CharGrid& grid, const Map& map, const Player& player) const;
 };

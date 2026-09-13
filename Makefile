@@ -1,5 +1,7 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra
+SDL_CFLAGS := $(shell sdl2-config --cflags)
+SDL_LIBS := $(shell sdl2-config --libs)
 
 SRC := $(wildcard src/*.cpp)
 OBJ := $(SRC:src/%.cpp=build/%.o)
@@ -8,10 +10,10 @@ BIN := build/ascii3d
 all: $(BIN)
 
 $(BIN): $(OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL_LIBS)
 
 build/%.o: src/%.cpp | build
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) -c -o $@ $<
 
 build:
 	mkdir -p build

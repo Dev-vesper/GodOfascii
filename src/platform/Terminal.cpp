@@ -1,20 +1,25 @@
 #include "platform/Terminal.h"
 #include "platform/Input.h"
 #include "render/CharGrid.h"
-#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <unordered_set>
+#include <vector>
+#else
+#include <chrono>
 #include <unordered_map>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
+#endif
 
 namespace {
-
-using Clock = std::chrono::steady_clock;
 
 // Escape sequences understood by every modern terminal (Windows 10+ too).
 constexpr char kSetup[] =
@@ -25,6 +30,166 @@ constexpr char kSetup[] =
     "\x1b[?1006h";  // ... as SGR sequences
 constexpr char kRestore[] =
     "\x1b[?1006l\x1b[?1003l\x1b[?7h\x1b[?25h\x1b[?1049l";
+
+void writeAll(const char* s, size_t n) {
+    std::fwrite(s, 1, n, stdout);
+    std::fflush(stdout);
+}
+
+}  // namespace
+
+#ifdef _WIN32
+
+struct Terminal::Impl {
+    bool ok = false;
+    bool isConsole = false;
+    HANDLE in = INVALID_HANDLE_VALUE;
+    HANDLE out = INVALID_HANDLE_VALUE;
+    DWORD savedInMode = 0;
+    DWORD savedOutMode = 0;
+    std::unordered_set<int> held;  // virtual-key codes currently down
+    bool haveMouse = false;
+    int lastMx = 0;
+    int lastMy = 0;
+
+    void keyEvent(const KEY_EVENT_RECORD& rec, Input& input);
+    void buildWish(Input& input);
+};
+
+void Terminal::Impl::keyEvent(const KEY_EVENT_RECORD& rec, Input& input) {
+    const int vk = static_cast<int>(rec.wVirtualKeyCode);
+    const bool down = rec.bKeyDown != FALSE;
+    switch (vk) {
+        case 'W': case 'A': case 'S': case 'D':
+        case VK_UP: case VK_DOWN:
+            if (down) {
+                held.insert(vk);
+            } else {
+                held.erase(vk);
+            }
+            break;
+        case VK_ESCAPE:
+            if (down) input.setAction(Action::Quit);
+            break;
+        case VK_TAB:
+            if (down) input.setAction(Action::ToggleMinimap);
+            break;
+        case VK_OEM_4:  // '[' on US layouts
+            if (down) input.setAction(Action::FovNarrow);
+            break;
+        case VK_OEM_6:  // ']'
+            if (down) input.setAction(Action::FovWiden);
+            break;
+        case 'C':
+            if (down &&
+                (rec.dwControlKeyState &
+                 (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0) {
+                input.setAction(Action::Quit);
+            }
+            break;
+        default: break;
+    }
+}
+
+void Terminal::Impl::buildWish(Input& input) {
+    Vec2 wish{};
+    if (held.count('W') != 0 || held.count(VK_UP) != 0) wish.y += 1.0f;
+    if (held.count('S') != 0 || held.count(VK_DOWN) != 0) wish.y -= 1.0f;
+    if (held.count('D') != 0) wish.x += 1.0f;
+    if (held.count('A') != 0) wish.x -= 1.0f;
+    input.setWish(length(wish) > 0.0f ? normalized(wish) : wish);
+}
+
+Terminal::Terminal(bool allowNonTty) : impl_(std::make_unique<Impl>()) {
+    impl_->in = GetStdHandle(STD_INPUT_HANDLE);
+    impl_->out = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD inMode = 0;
+    DWORD outMode = 0;
+    impl_->isConsole =
+        impl_->in != INVALID_HANDLE_VALUE &&
+        impl_->out != INVALID_HANDLE_VALUE &&
+        GetConsoleMode(impl_->in, &inMode) &&
+        GetConsoleMode(impl_->out, &outMode);
+    if (!impl_->isConsole && !allowNonTty) return;
+
+    if (impl_->isConsole) {
+        impl_->savedInMode = inMode;
+        impl_->savedOutMode = outMode;
+        // VT sequences for rendering (available since Windows 10).
+        if (!SetConsoleMode(impl_->out,
+                            outMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+            return;
+        }
+        // Raw-ish input with mouse reporting; quick-edit off so console
+        // selection clicks do not freeze the process.
+        const DWORD rawIn =
+            (inMode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT |
+                        ENABLE_PROCESSED_INPUT | ENABLE_QUICK_EDIT_MODE)) |
+            ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT;
+        SetConsoleMode(impl_->in, rawIn);
+    }
+    writeAll(kSetup, sizeof(kSetup) - 1);
+    impl_->ok = true;
+}
+
+Terminal::~Terminal() {
+    if (!impl_ || !impl_->ok) return;
+    writeAll(kRestore, sizeof(kRestore) - 1);
+    if (impl_->isConsole) {
+        SetConsoleMode(impl_->in, impl_->savedInMode);
+        SetConsoleMode(impl_->out, impl_->savedOutMode);
+    }
+}
+
+bool Terminal::ok() const { return impl_->ok; }
+
+int Terminal::cols() const {
+    CONSOLE_SCREEN_BUFFER_INFO info{};
+    if (!GetConsoleScreenBufferInfo(impl_->out, &info)) return 80;
+    return info.srWindow.Right - info.srWindow.Left + 1;
+}
+
+int Terminal::rows() const {
+    CONSOLE_SCREEN_BUFFER_INFO info{};
+    if (!GetConsoleScreenBufferInfo(impl_->out, &info)) return 24;
+    return info.srWindow.Bottom - info.srWindow.Top + 1;
+}
+
+void Terminal::pollInput(Input& input) {
+    input.reset();
+    DWORD count = 0;
+    if (impl_->in != INVALID_HANDLE_VALUE &&
+        GetNumberOfConsoleInputEvents(impl_->in, &count) && count > 0) {
+        std::vector<INPUT_RECORD> records(count);
+        DWORD read = 0;
+        if (ReadConsoleInputW(impl_->in, records.data(), count, &read)) {
+            for (DWORD i = 0; i < read; ++i) {
+                const INPUT_RECORD& r = records[i];
+                if (r.EventType == KEY_EVENT) {
+                    impl_->keyEvent(r.Event.KeyEvent, input);
+                } else if (r.EventType == MOUSE_EVENT) {
+                    const MOUSE_EVENT_RECORD& m = r.Event.MouseEvent;
+                    if ((m.dwEventFlags & MOUSE_MOVED) != 0) {
+                        if (impl_->haveMouse) {
+                            input.addMouse(m.dwMousePosition.X - impl_->lastMx,
+                                           m.dwMousePosition.Y - impl_->lastMy);
+                        }
+                        impl_->lastMx = m.dwMousePosition.X;
+                        impl_->lastMy = m.dwMousePosition.Y;
+                        impl_->haveMouse = true;
+                    }
+                }
+            }
+        }
+    }
+    impl_->buildWish(input);
+}
+
+#else  // POSIX: Linux, FreeBSD and friends
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
 
 // Terminals report no key release; auto-repeat keeps a held key fresh and
 // the weight decays until the next repeat (or fades out after release).
@@ -38,11 +203,6 @@ extern "C" void restoreAndExit(int) {
     ssize_t ignored = write(STDOUT_FILENO, kRestore, sizeof(kRestore) - 1);
     (void)ignored;
     _exit(1);
-}
-
-void writeAll(const char* s, size_t n) {
-    std::fwrite(s, 1, n, stdout);
-    std::fflush(stdout);
 }
 
 }  // namespace
@@ -222,6 +382,8 @@ void Terminal::pollInput(Input& input) {
     }
     impl_->applyHeld(input);
 }
+
+#endif  // _WIN32
 
 void Terminal::present(const CharGrid& grid) {
     std::string out;

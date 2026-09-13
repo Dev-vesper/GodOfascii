@@ -1,7 +1,9 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Isrc
-SDL_CFLAGS := $(shell sdl2-config --cflags)
-SDL_LIBS := $(shell sdl2-config --libs)
+# Fall back to plain -lSDL2 when sdl2-config is unavailable (some MinGW or
+# vcpkg toolchains ship SDL2 without the helper script).
+SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null || echo -I/usr/include/SDL2)
+SDL_LIBS := $(shell sdl2-config --libs 2>/dev/null || echo -lSDL2)
 
 SRC := $(wildcard src/*.cpp src/*/*.cpp)
 OBJ := $(SRC:src/%.cpp=build/%.o)

@@ -3,11 +3,11 @@
 
 const TileDef Map::kTiles[] = {
     {' ', false, {0, 0, 0}, '.'},        // 0: floor
-    {' ', true, {40, 44, 54}, '+'},      // 1: border (edge of the world)
-    {'#', true, {110, 122, 142}, '#'},   // 2: stone wall
-    {'%', true, {168, 74, 62}, '%'},     // 3: brick wall
-    {'=', true, {92, 128, 88}, '='},     // 4: mossy wall
-    {'T', true, {204, 172, 80}, 'T'},    // 5: pillar
+    {'#', true, {90, 96, 112}, '#'},     // 1: border (edge of the world)
+    {'#', true, {120, 132, 152}, '#'},   // 2: stone wall
+    {'%', true, {172, 84, 70}, '%'},     // 3: brick wall
+    {'=', true, {104, 138, 96}, '='},    // 4: mossy wall
+    {'T', true, {196, 168, 92}, 'T'},    // 5: pillar
 };
 
 uint8_t Map::tileFromChar(char ch) {
@@ -16,7 +16,7 @@ uint8_t Map::tileFromChar(char ch) {
         case '%': return 3;
         case '=': return 4;
         case 'T': return 5;
-        default: return 0;  // '.', ' ' and anything else are walkable
+        default: return 0;  // '.', ' ', '*', '@' are walkable
     }
 }
 
@@ -52,8 +52,12 @@ bool Map::load(const std::string& path) {
             if (ch == '@') {
                 spawnX_ = x + 0.5f;
                 spawnY_ = y + 0.5f;
-                spawnAngle_ = -1.5707963f;  // face north (towards y-)
+                spawnAngle_ = 0.0f;  // face east
                 spawnFound = true;
+                ch = ' ';
+            }
+            if (ch == '*') {
+                crystals_.push_back({x + 0.5f, y + 0.5f});
                 ch = ' ';
             }
             tiles_[static_cast<size_t>(y) * width_ + x] = tileFromChar(ch);

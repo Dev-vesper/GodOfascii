@@ -1,4 +1,6 @@
 #include "Raycaster.h"
+#include "CharGrid.h"
+#include "Color.h"
 #include "Map.h"
 #include "Player.h"
 #include <algorithm>
@@ -6,33 +8,140 @@
 #include <vector>
 
 namespace {
-const char kShadeRamp[] = " .:-=+*#%@";
-constexpr int kRampLast = 9;
+constexpr float kFogDensity = 0.075f;
+constexpr Rgb kFogColor{16, 20, 30};
+constexpr Rgb kFloorA{56, 50, 42};
+constexpr Rgb kFloorB{64, 58, 48};
+constexpr Rgb kCeilA{24, 28, 44};
+constexpr Rgb kCeilB{28, 32, 50};
 
-char rampChar(float shade) {
-    const int i = static_cast<int>(shade * kRampLast + 0.5f);
-    return kShadeRamp[std::clamp(i, 0, kRampLast)];
+// Glyph textures: 8x8 characters plus a per-texel brightness map that also
+// darkens the bottom rows like ambient occlusion.
+struct WallTex {
+    const char* glyphs[8];
+    const uint8_t light[8][8];
+};
+
+const WallTex kStoneTex = {
+    {"########", "###..###", "########", "#..##..#", "########", "###..###",
+     "########", "#..##..#"},
+    {{255, 250, 250, 245, 245, 250, 250, 255},
+     {250, 245, 240, 240, 240, 240, 245, 250},
+     {245, 240, 235, 235, 235, 235, 240, 245},
+     {240, 235, 220, 220, 220, 220, 235, 240},
+     {235, 230, 225, 225, 225, 225, 230, 235},
+     {230, 225, 215, 215, 215, 215, 225, 230},
+     {225, 220, 210, 210, 210, 210, 220, 225},
+     {215, 210, 190, 190, 190, 190, 210, 215}},
+};
+
+const WallTex kBrickTex = {
+    {"--------", "%%%.%%%%", "%%%.%%%%", "--------", "%%%%.%%%",
+     "%%%%.%%%", "--------", "%%%.%%%%"},
+    {{200, 190, 190, 185, 185, 190, 190, 200},
+     {230, 235, 235, 175, 235, 235, 235, 230},
+     {225, 230, 230, 170, 230, 230, 230, 225},
+     {195, 185, 185, 180, 180, 185, 185, 195},
+     {220, 225, 225, 225, 170, 225, 225, 220},
+     {215, 220, 220, 220, 165, 220, 220, 215},
+     {190, 180, 180, 175, 175, 180, 180, 190},
+     {205, 210, 210, 155, 210, 210, 210, 205}},
+};
+
+const WallTex kMossTex = {
+    {"========", "=..===.=", "==.=====", "====.===", "=.===..=", "===.====",
+     "==.==.==", "========"},
+    {{240, 238, 238, 235, 235, 238, 238, 240},
+     {238, 205, 205, 232, 230, 205, 232, 238},
+     {235, 228, 200, 230, 228, 228, 205, 235},
+     {232, 226, 224, 220, 200, 224, 222, 232},
+     {230, 198, 222, 220, 218, 205, 202, 230},
+     {226, 220, 198, 216, 214, 196, 212, 226},
+     {222, 214, 196, 208, 200, 206, 194, 222},
+     {210, 204, 194, 190, 188, 190, 190, 210}},
+};
+
+const WallTex kPillarTex = {
+    {"(======)", "| |||| |", "| |||| |", "| |||| |", "| |||| |",
+     "| |||| |", "| |||| |", "'------'"},
+    {{235, 255, 255, 255, 255, 255, 255, 235},
+     {215, 255, 235, 235, 235, 235, 235, 215},
+     {210, 250, 230, 230, 230, 230, 230, 210},
+     {205, 245, 225, 225, 225, 225, 225, 205},
+     {200, 240, 220, 220, 220, 220, 220, 200},
+     {195, 235, 215, 215, 215, 215, 215, 195},
+     {190, 230, 210, 210, 210, 210, 210, 190},
+     {170, 200, 200, 200, 200, 200, 200, 170}},
+};
+
+const WallTex& texFor(uint8_t tile) {
+    switch (tile) {
+        case 3: return kBrickTex;
+        case 4: return kMossTex;
+        case 5: return kPillarTex;
+        default: return kStoneTex;  // stone and border
+    }
+}
+
+inline int floorHash(int x, int y, int tx, int ty) {
+    return (x * 73856093) ^ (y * 19349663) ^ (tx * 83492791) ^ (ty * 2971215073u);
 }
 }  // namespace
 
-void Raycaster::render(const Map& map, const Player& player) const {
-    const int w = fb_.width();
-    const int h = fb_.height();
+void Raycaster::render(CharGrid& grid, const Map& map, const Player& player,
+                       std::vector<float>& depthBuffer) const {
+    const int w = grid.width();
+    const int h = grid.height();
     if (w <= 0 || h <= 0) return;
+    depthBuffer.assign(w, 1e30f);
 
-    // Distance-shaded sky and floor: one color per row.
-    std::vector<uint8_t> ceiling(h);
-    std::vector<uint8_t> floorRow(h);
-    for (int y = 0; y < h; ++y) {
-        float t = std::abs(y - h * 0.5f) / (h * 0.5f);  // 0 at horizon
-        t = std::clamp(t, 0.0f, 1.0f);
-        ceiling[y] = rgbTo256(scale(Rgb{28, 34, 50}, 0.25f + 0.75f * t));
-        floorRow[y] = rgbTo256(scale(Rgb{66, 58, 48}, 0.2f + 0.8f * t));
-    }
+    // y-shearing: the horizon moves with pitch and head bob.
+    int horizon = static_cast<int>(h * 0.5f + player.pitch * h + player.headBob());
+    horizon = std::clamp(horizon, h / 6, h - h / 6);
 
     const Vec2 dir = player.dir();
     const Vec2 plane = player.plane();
 
+    // --- Floor and ceiling: perspective-correct row casting. ---
+    const Vec2 rayDir0 = dir - plane;  // leftmost ray
+    const Vec2 rayDir1 = dir + plane;  // rightmost ray
+    for (int y = 0; y < h; ++y) {
+        const bool isFloor = y > horizon;
+        const int p = isFloor ? y - horizon : horizon - y;
+        if (p == 0) continue;
+        const float rowDist = (0.5f * h) / p;
+        const float fog = 1.0f - std::exp(-rowDist * kFogDensity);
+
+        float fx = player.pos.x + rowDist * rayDir0.x;
+        float fy = player.pos.y + rowDist * rayDir0.y;
+        const float stepX = rowDist * (rayDir1.x - rayDir0.x) / w;
+        const float stepY = rowDist * (rayDir1.y - rayDir0.y) / w;
+
+        const Rgb baseA = isFloor ? kFloorA : kCeilA;
+        const Rgb baseB = isFloor ? kFloorB : kCeilB;
+
+        for (int x = 0; x < w; ++x) {
+            const int cellX = static_cast<int>(fx);
+            const int cellY = static_cast<int>(fy);
+            const int tx = static_cast<int>((fx - cellX) * 4.0f);
+            const int ty = static_cast<int>((fy - cellY) * 4.0f);
+            const bool alt = ((cellX + cellY) & 1) != 0;
+            Rgb col = lerp(alt ? baseB : baseA, kFogColor, fog);
+
+            char ch = ' ';
+            const int hash = floorHash(cellX, cellY, tx, ty) & 31;
+            if (hash == 0) {
+                ch = isFloor ? '.' : '`';
+            } else if (hash == 7) {
+                ch = isFloor ? ',' : '\'';
+            }
+            grid.set(x, y, ch, lerp(scale(baseA, 0.7f), kFogColor, fog), col);
+            fx += stepX;
+            fy += stepY;
+        }
+    }
+
+    // --- Walls: DDA with glyph texturing. ---
     for (int x = 0; x < w; ++x) {
         const float cameraX = 2.0f * x / static_cast<float>(w) - 1.0f;
         const Vec2 ray = dir + plane * cameraX;
@@ -61,10 +170,9 @@ void Raycaster::render(const Map& map, const Player& player) const {
             sideY = (mapY + 1.0f - player.pos.y) * deltaY;
         }
 
-        // DDA walk; the solid border tile guarantees termination.
         int side = 0;
         uint8_t tile = 0;
-        while (true) {
+        while (true) {  // the solid border tile guarantees termination
             if (sideX < sideY) {
                 sideX += deltaX;
                 mapX += stepX;
@@ -78,24 +186,33 @@ void Raycaster::render(const Map& map, const Player& player) const {
             if (map.solid(mapX, mapY)) break;
         }
 
-        float dist = side == 0 ? sideX - deltaX : sideY - deltaY;
-        dist = std::max(dist, 0.05f);
+        const float dist = std::max(side == 0 ? sideX - deltaX : sideY - deltaY,
+                                    0.05f);
+        depthBuffer[x] = dist;
 
         const int lineH = static_cast<int>(h / dist);
-        const int y0 = std::max(0, h / 2 - lineH / 2);
-        const int y1 = std::min(h - 1, h / 2 + lineH / 2);
+        const int y0 = std::max(0, horizon - lineH / 2);
+        const int y1 = std::min(h - 1, horizon + lineH / 2);
 
-        float shade = 1.0f / (1.0f + dist * dist * 0.045f);
-        if (side == 1) shade *= 0.72f;  // darker on north/south faces
-        shade = std::clamp(shade, 0.06f, 1.0f);
+        // Texture u coordinate along the wall.
+        float wallX = side == 0 ? player.pos.y + dist * ray.y
+                                : player.pos.x + dist * ray.x;
+        wallX -= std::floor(wallX);
+        const int texX = std::clamp(static_cast<int>(wallX * 8.0f), 0, 7);
 
-        const Rgb col = scale(map.def(tile).color, shade);
-        const uint8_t fg = rgbTo256(col);
-        const uint8_t bg = rgbTo256(scale(col, 0.3f));
-        const char ch = rampChar(shade);
+        const WallTex& tex = texFor(tile);
+        const Rgb base = map.def(tile).color;
+        const float sideShade = side == 1 ? 0.72f : 1.0f;
+        const float fog = 1.0f - std::exp(-dist * kFogDensity);
 
-        for (int y = 0; y < y0; ++y) fb_.set(x, y, ' ', ceiling[y], ceiling[y]);
-        for (int y = y0; y <= y1; ++y) fb_.set(x, y, ch, fg, bg);
-        for (int y = y1 + 1; y < h; ++y) fb_.set(x, y, ' ', floorRow[y], floorRow[y]);
+        for (int y = y0; y <= y1; ++y) {
+            int texY = (y - (horizon - lineH / 2)) * 8 / std::max(1, lineH);
+            texY = std::clamp(texY, 0, 7);
+            const char ch = tex.glyphs[texY][texX];
+            const float light = tex.light[texY][texX] / 255.0f * sideShade;
+            const Rgb fg = lerp(scale(base, light), kFogColor, fog);
+            const Rgb bg = lerp(scale(base, light * 0.35f), kFogColor, fog);
+            grid.set(x, y, ch, fg, bg);
+        }
     }
 }

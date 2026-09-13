@@ -1,17 +1,15 @@
 #pragma once
-#include "FrameBuffer.h"
+#include <vector>
 
+struct CharGrid;
 class Map;
 class Player;
 
-// Grid raycaster (Wolfenstein-style DDA). Renders the first-person view into
-// a FrameBuffer; knows nothing about the terminal itself.
+// Grid raycaster (Wolfenstein-style DDA) with perspective-correct floor and
+// ceiling casting, glyph wall textures, y-shearing pitch and distance fog.
+// Writes the frame into a CharGrid and a per-column depth buffer for sprites.
 class Raycaster {
 public:
-    explicit Raycaster(FrameBuffer& fb) : fb_(fb) {}
-
-    void render(const Map& map, const Player& player) const;
-
-private:
-    FrameBuffer& fb_;
+    void render(CharGrid& grid, const Map& map, const Player& player,
+                std::vector<float>& depthBuffer) const;
 };

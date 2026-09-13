@@ -1,11 +1,12 @@
 #pragma once
 #include "render/CharGrid.h"
 #include "Map.h"
-#include "Minimap.h"
 #include "Player.h"
 #include "render/Raycaster.h"
 #include "platform/Input.h"
 #include "platform/Window.h"
+#include "ui/Hud.h"
+#include "ui/Minimap.h"
 #include <chrono>
 #include <string>
 #include <vector>
@@ -22,7 +23,6 @@ private:
     void pollInput();
     void update(float dt);
     void render();
-    void drawHud();
 
     Map map_;
     Player player_;
@@ -30,6 +30,7 @@ private:
     Input input_;
     Raycaster raycaster_;
     Minimap minimap_;
+    Hud hud_;
     CharGrid grid_;
     std::vector<float> depthBuffer_;
     bool showMinimap_ = true;

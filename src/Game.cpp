@@ -2,9 +2,6 @@
 #include "render/Sprite.h"
 #include <algorithm>
 #include <chrono>
-#include <cmath>
-#include <cstdio>
-#include <cstring>
 #include <iostream>
 #include <thread>
 
@@ -12,8 +9,6 @@ namespace {
 constexpr std::chrono::milliseconds kFrameBudget{16};
 constexpr float kMinFov = 40.0f;
 constexpr float kMaxFov = 110.0f;
-constexpr Rgb kHudFg{235, 235, 235};
-constexpr Rgb kHudBg{24, 26, 34};
 }  // namespace
 
 Game::Game(const std::string& mapPath) {
@@ -62,27 +57,8 @@ void Game::render() {
     Sprite::drawCrystals(grid_, map_, player_, depthBuffer_, horizon);
     if (showMinimap_) minimap_.render(grid_, map_, player_);
 
-    // Crosshair at screen center.
-    const int cx = grid_.width() / 2;
-    const int cy = grid_.height() / 2;
-    grid_.set(cx, cy, '+', {255, 255, 255}, {0, 0, 0});
-
-    drawHud();
+    hud_.draw(grid_, player_, fps_);
     window_.present(grid_);
-}
-
-void Game::drawHud() {
-    const int y = grid_.height() - 1;
-    if (y < 1) return;
-    grid_.setText(1, y, "WASD move | mouse look | Tab map | [ ] fov | F11 full | Esc quit",
-                  kHudFg, kHudBg);
-    char buf[72];
-    std::snprintf(buf, sizeof buf, "FPS %d | FOV %d | %dx%d",
-                  static_cast<int>(std::lround(fps_)),
-                  static_cast<int>(std::lround(player_.fov)), grid_.width(),
-                  grid_.height());
-    const int x = std::max(1, grid_.width() - static_cast<int>(std::strlen(buf)) - 1);
-    grid_.setText(x, y, buf, kHudFg, kHudBg);
 }
 
 int Game::run() {

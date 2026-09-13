@@ -1,5 +1,5 @@
 #include "ui/Hud.h"
-#include "Player.h"
+#include "game/Player.h"
 #include "render/CharGrid.h"
 #include <algorithm>
 #include <cmath>

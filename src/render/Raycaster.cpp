@@ -1,8 +1,8 @@
 #include "render/Raycaster.h"
 #include "render/CharGrid.h"
 #include "core/Color.h"
-#include "Map.h"
-#include "Player.h"
+#include "game/Map.h"
+#include "game/Player.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>

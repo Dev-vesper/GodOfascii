@@ -1,6 +1,6 @@
 #pragma once
-#include "Color.h"
-#include "Vec2.h"
+#include "core/Color.h"
+#include "core/Vec2.h"
 #include <cstdint>
 #include <string>
 #include <vector>

@@ -1,6 +1,6 @@
 #include "Sprite.h"
 #include "CharGrid.h"
-#include "Color.h"
+#include "core/Color.h"
 #include "Map.h"
 #include "Player.h"
 #include <cmath>

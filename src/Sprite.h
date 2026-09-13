@@ -1,5 +1,5 @@
 #pragma once
-#include "Vec2.h"
+#include "core/Vec2.h"
 #include <vector>
 
 struct CharGrid;

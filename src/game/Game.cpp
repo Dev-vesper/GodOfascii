@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "platform/SdlDisplay.h"
 #include "render/Sprite.h"
 #include <algorithm>
 #include <chrono>
@@ -13,16 +14,17 @@ constexpr float kMaxFov = 110.0f;
 
 Game::Game(const std::string& mapPath) {
     map_.load(mapPath);
+    display_ = std::make_unique<SdlDisplay>();
 }
 
 void Game::pollInput() {
-    input_.beginFrame();
+    display_->pollInput(input_);
     if (input_.triggered(Action::Quit)) {
         running_ = false;
         return;
     }
     if (input_.triggered(Action::ToggleMinimap)) showMinimap_ = !showMinimap_;
-    if (input_.triggered(Action::ToggleFullscreen)) window_.toggleFullscreen();
+    if (input_.triggered(Action::ToggleFullscreen)) display_->toggleFullscreen();
     if (input_.triggered(Action::FovNarrow)) {
         player_.fov = std::max(kMinFov, player_.fov - 5.0f);
     }
@@ -58,7 +60,7 @@ void Game::render() {
     if (showMinimap_) minimap_.render(grid_, map_, player_);
 
     hud_.draw(grid_, player_, fps_);
-    window_.present(grid_);
+    display_->present(grid_);
 }
 
 int Game::run() {
@@ -66,7 +68,7 @@ int Game::run() {
         std::cerr << "error: " << map_.error() << "\n";
         return 1;
     }
-    if (!window_.ok()) {
+    if (!display_->ok()) {
         std::cerr << "error: cannot create window\n";
         return 1;
     }
@@ -85,7 +87,7 @@ int Game::run() {
 
         pollInput();
 
-        grid_.resize(window_.cols(), std::max(3, window_.rows() - 1));
+        grid_.resize(display_->cols(), std::max(3, display_->rows() - 1));
         grid_.clear();
         update(dt);
         render();

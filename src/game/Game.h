@@ -4,7 +4,7 @@
 #include "Player.h"
 #include "render/Raycaster.h"
 #include "platform/Input.h"
-#include "platform/Window.h"
+#include "platform/Display.h"
 #include "ui/Hud.h"
 #include "ui/Minimap.h"
 #include <chrono>
@@ -26,7 +26,7 @@ private:
 
     Map map_;
     Player player_;
-    Window window_;
+    std::unique_ptr<Display> display_;
     Input input_;
     Raycaster raycaster_;
     Minimap minimap_;

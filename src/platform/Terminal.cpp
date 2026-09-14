@@ -271,6 +271,26 @@ using Clock = std::chrono::steady_clock;
 // Terminals report no key release; auto-repeat keeps a held key fresh and
 // the weight decays until the next repeat (or fades out after release).
 constexpr auto kKeyFadeMs = std::chrono::milliseconds(350);
+// Console typematic goes completely silent while two keys are held -- no
+// repeats for anyone. A chorded key keeps moving for this long without any
+// event at all; a single tap on any chord key renews the whole combo.
+constexpr auto kCarryMs = std::chrono::milliseconds(2500);
+
+// The key that means the opposite direction, 0 when not a direction key.
+// Pressing it brakes a chord partner that went typematic-silent.
+char oppositeOf(char c) {
+    switch (c) {
+        case 'w': return 's';
+        case 's': return 'w';
+        case 'a': return 'd';
+        case 'd': return 'a';
+        case 'q': return 'e';
+        case 'e': return 'q';
+        case '^': return 'v';
+        case 'v': return '^';
+        default: return 0;
+    }
+}
 
 termios g_savedTty{};
 bool g_isTty = false;
@@ -289,6 +309,9 @@ struct Terminal::Impl {
     bool isTty = false;
     // Key (or arrow sentinel '^'/'v') -> last time it was seen pressed.
     std::unordered_map<char, Clock::time_point> held;
+    // Same keys -> ride-along clocks that outlive typematic silence while a
+    // chord is physically held (see refreshHeld).
+    std::unordered_map<char, Clock::time_point> carried;
     bool haveMouse = false;
     int lastMx = 0;
     int lastMy = 0;
@@ -303,31 +326,50 @@ struct Terminal::Impl {
     void key(char ch, Input& input);
     void sequence(const char* params, size_t n, char finalByte, Input& input);
     void applyHeld(Input& input);
-    void refreshHeld();
+    void refreshHeld(bool renewing);
+    void chordPress(char ch);
 };
 
-// Terminal keyboards report no key release, and typematic repeat fires for
-// the newest key only: the moment a second key is pressed, the stream of
-// repeats for the older one stops dead. Keys that were still alive at that
-// moment stay alive alongside the new one, so chords (walk + strafe, walk +
-// turn) keep working on consoles. Everything decays as before once the
-// keyboard goes quiet.
-void Terminal::Impl::refreshHeld() {
+// Terminals send nothing while two keys are held -- no repeats for either
+// key -- so the newest event for a chord member can be seconds old while it
+// is still physically held. Self events drive the fast clock in `held`; the
+// ride-along clocks in `carried` keep the whole chord moving through the
+// silence. A self-fresh key always carries itself; a stale partner is
+// re-carried only when a chord member is pressed again (renewing), so a
+// foreign key press neither breaks nor extends the chord.
+void Terminal::Impl::refreshHeld(bool renewing) {
+    if (held.size() < 2) return;
     const auto now = Clock::now();
-    for (auto& entry : held) {
-        if (now - entry.second < kKeyFadeMs) entry.second = now;
+    for (const auto& entry : held) {
+        const bool selfFresh = now - entry.second < kKeyFadeMs;
+        const auto c = carried.find(entry.first);
+        const bool carriedFresh =
+            c != carried.end() && now - c->second < kCarryMs;
+        if (selfFresh || (renewing && carriedFresh)) carried[entry.first] = now;
     }
 }
 
+// Shared press handling for keys that feed the movement chord (wasd, qe and
+// the arrow sentinels). A re-press of an already-held key renews the whole
+// combo; pressing the opposite direction evicts a silent partner as a brake.
+void Terminal::Impl::chordPress(char ch) {
+    const bool renewing = held.find(ch) != held.end();
+    const char opp = oppositeOf(ch);
+    const auto it = held.find(opp);
+    if (it != held.end() && Clock::now() - it->second >= kKeyFadeMs) {
+        held.erase(it);
+        carried.erase(opp);
+    }
+    held[ch] = Clock::now();
+    refreshHeld(renewing);
+}
+
 void Terminal::Impl::key(char ch, Input& input) {
-    const auto now = Clock::now();
+    if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
     switch (ch) {
-        case 'w': case 'W': held['w'] = now; break;
-        case 's': case 'S': held['s'] = now; break;
-        case 'a': case 'A': held['a'] = now; break;
-        case 'd': case 'D': held['d'] = now; break;
-        case 'q': case 'Q': held['q'] = now; break;
-        case 'e': case 'E': held['e'] = now; break;
+        case 'w': case 's': case 'a': case 'd': case 'q': case 'e':
+            chordPress(ch);
+            break;
         case '\t': input.setAction(Action::ToggleMinimap); break;
         case '[': input.setAction(Action::FovNarrow); break;
         case ']': input.setAction(Action::FovWiden); break;
@@ -335,31 +377,26 @@ void Terminal::Impl::key(char ch, Input& input) {
         case '\x03': input.setAction(Action::Quit); break;  // Ctrl+C
         default: break;
     }
-    refreshHeld();
 }
 
 void Terminal::Impl::sequence(const char* params, size_t n, char finalByte,
                               Input& input) {
     if (finalByte == 'A') {
-        held['^'] = Clock::now();  // arrow up
+        chordPress('^');  // arrow up
         input.setAction(Action::MenuUp);
-        refreshHeld();
         return;
     }
     if (finalByte == 'B') {
-        held['v'] = Clock::now();  // arrow down
+        chordPress('v');  // arrow down
         input.setAction(Action::MenuDown);
-        refreshHeld();
         return;
     }
     if (finalByte == 'C') {  // arrow right
         input.setAction(Action::MenuRight);
-        refreshHeld();
         return;
     }
     if (finalByte == 'D') {  // arrow left
         input.setAction(Action::MenuLeft);
-        refreshHeld();
         return;
     }
     if (finalByte != 'M' && finalByte != 'm') return;
@@ -395,16 +432,38 @@ void Terminal::Impl::applyHeld(Input& input) {
     Vec2 wish{};
     float turn = 0.0f;  // synthetic mouse pixels from the turn keys
     for (auto it = held.begin(); it != held.end();) {
-        const auto age =
-            std::chrono::duration_cast<std::chrono::milliseconds>(now -
-                                                                   it->second);
-        if (age > kKeyFadeMs) {
+        const auto selfAge = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - it->second);
+        // Fast clock: decays between typematic repeats, dies after release.
+        float w = selfAge < kKeyFadeMs
+                      ? 1.0f - static_cast<float>(selfAge.count()) /
+                                   static_cast<float>(kKeyFadeMs.count())
+                      : 0.0f;
+        const auto c = carried.find(it->first);
+        if (c != carried.end()) {
+            const auto carryAge =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now -
+                                                                      c->second);
+            if (carryAge < kCarryMs) {
+                // Slow clock: full weight for the first half of the window
+                // so re-taps do not pulse the Q/E turn rate, then a linear
+                // fade so a going-stale chord eases off instead of stopping
+                // dead at the deadline.
+                const float carryW =
+                    std::min(1.0f,
+                             2.0f * (1.0f -
+                                     static_cast<float>(carryAge.count()) /
+                                         static_cast<float>(
+                                             kCarryMs.count())));
+                w = std::max(w, carryW);
+            } else {
+                carried.erase(c);
+            }
+        }
+        if (w <= 0.0f) {
             it = held.erase(it);
             continue;
         }
-        const float w =
-            1.0f - static_cast<float>(age.count()) /
-                       static_cast<float>(kKeyFadeMs.count());
         switch (it->first) {
             case 'w': case '^': wish.y += w; break;
             case 's': case 'v': wish.y -= w; break;
@@ -484,7 +543,6 @@ void Terminal::pollInput(Input& input) {
             }
             if (i + 1 >= len) {
                 input.setAction(Action::MenuToggle);  // lone escape byte
-                impl_->refreshHeld();
                 ++i;
                 continue;
             }

@@ -151,6 +151,10 @@ void SdlDisplay::pollInput(Input& input) {
     if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]) wish.y -= 1.0f;
     if (keys[SDL_SCANCODE_D]) wish.x += 1.0f;
     if (keys[SDL_SCANCODE_A]) wish.x -= 1.0f;
+    if (keys[SDL_SCANCODE_Y]) { wish.x -= 1.0f; wish.y += 1.0f; }
+    if (keys[SDL_SCANCODE_U]) { wish.x += 1.0f; wish.y += 1.0f; }
+    if (keys[SDL_SCANCODE_B]) { wish.x -= 1.0f; wish.y -= 1.0f; }
+    if (keys[SDL_SCANCODE_N]) { wish.x += 1.0f; wish.y -= 1.0f; }
     input.setWish(length(wish) > 0.0f ? normalized(wish) : wish);
 }
 

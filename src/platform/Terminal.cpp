@@ -110,6 +110,7 @@ void Terminal::Impl::keyEvent(const KEY_EVENT_RECORD& rec, Input& input) {
     switch (vk) {
         case 'W': case 'A': case 'S': case 'D':
         case 'Q': case 'E':
+        case 'Y': case 'U': case 'B': case 'N':
             if (down) {
                 held.insert(vk);
             } else {
@@ -170,6 +171,10 @@ void Terminal::Impl::buildWish(Input& input) {
     if (held.count('S') != 0 || held.count(VK_DOWN) != 0) wish.y -= 1.0f;
     if (held.count('D') != 0) wish.x += 1.0f;
     if (held.count('A') != 0) wish.x -= 1.0f;
+    if (held.count('Y') != 0) { wish.x -= 1.0f; wish.y += 1.0f; }
+    if (held.count('U') != 0) { wish.x += 1.0f; wish.y += 1.0f; }
+    if (held.count('B') != 0) { wish.x -= 1.0f; wish.y -= 1.0f; }
+    if (held.count('N') != 0) { wish.x += 1.0f; wish.y -= 1.0f; }
     input.setWish(length(wish) > 0.0f ? normalized(wish) : wish);
 }
 
@@ -303,6 +308,10 @@ char oppositeOf(char c) {
         case 'e': return 'q';
         case '^': return 'v';
         case 'v': return '^';
+        case 'y': return 'n';
+        case 'n': return 'y';
+        case 'u': return 'b';
+        case 'b': return 'u';
         default: return 0;
     }
 }
@@ -436,6 +445,7 @@ void Terminal::Impl::kittyKey(const char* params, size_t n, Input& input) {
     char move = 0;
     switch (code) {
         case 'w': case 'a': case 's': case 'd': case 'q': case 'e':
+        case 'y': case 'u': case 'b': case 'n':
             move = static_cast<char>(code);
             break;
         case 57350: move = '^'; break;  // functional codes: arrows
@@ -473,6 +483,7 @@ void Terminal::Impl::key(char ch, Input& input) {
     if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
     switch (ch) {
         case 'w': case 's': case 'a': case 'd': case 'q': case 'e':
+        case 'y': case 'u': case 'b': case 'n':
             chordPress(ch);
             break;
         case '\t': input.setAction(Action::ToggleMinimap); break;
@@ -609,6 +620,12 @@ void Terminal::Impl::applyHeld(Input& input) {
             case 's': case 'v': wish.y -= w; break;
             case 'd': wish.x += w; break;
             case 'a': wish.x -= w; break;
+            // Diagonals: single keys, so they auto-repeat solo on every
+            // terminal -- no chord clocks needed to hold a diagonal.
+            case 'y': wish.x -= w; wish.y += w; break;
+            case 'u': wish.x += w; wish.y += w; break;
+            case 'b': wish.x -= w; wish.y -= w; break;
+            case 'n': wish.x += w; wish.y -= w; break;
             case 'q': turn -= w; break;
             case 'e': turn += w; break;
             default: break;

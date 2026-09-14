@@ -271,9 +271,13 @@ using Clock = std::chrono::steady_clock;
 // Terminals report no key release; auto-repeat keeps a held key fresh and
 // the weight decays until the next repeat (or fades out after release).
 constexpr auto kKeyFadeMs = std::chrono::milliseconds(350);
-// Console typematic goes completely silent while two keys are held -- no
-// repeats for anyone. A chorded key keeps moving for this long without any
-// event at all; a single tap on any chord key renews the whole combo.
+// Holding two keys silences the typematic of everyone but the newest key
+// (consoles silence everyone), and no release events ever arrive. A real
+// finger (re)press grants itself and every partner still alive at that
+// moment -- the keys whose repeats the press just stole -- this ride-along
+// window. Auto-repeats renew nothing but their own key's fast clock, so a
+// partner that was let go always fades out, even while another key keeps
+// repeating.
 constexpr auto kCarryMs = std::chrono::milliseconds(2500);
 
 // The key that means the opposite direction, 0 when not a direction key.
@@ -333,43 +337,35 @@ struct Terminal::Impl {
     void key(char ch, Input& input);
     void sequence(const char* params, size_t n, char finalByte, Input& input);
     void applyHeld(Input& input);
-    void refreshHeld(bool renewing);
     void chordPress(char ch);
     void logFrame(const Input& input, const char* buf, ssize_t n);
 };
 
-// Terminals send nothing while two keys are held -- no repeats for either
-// key -- so the newest event for a chord member can be seconds old while it
-// is still physically held. Self events drive the fast clock in `held`; the
-// ride-along clocks in `carried` keep the whole chord moving through the
-// silence. A self-fresh key always carries itself; a stale partner is
-// re-carried only when a chord member is pressed again (renewing), so a
-// foreign key press neither breaks nor extends the chord.
-void Terminal::Impl::refreshHeld(bool renewing) {
-    if (held.size() < 2) return;
-    const auto now = Clock::now();
-    for (const auto& entry : held) {
-        const bool selfFresh = now - entry.second < kKeyFadeMs;
-        const auto c = carried.find(entry.first);
-        const bool carriedFresh =
-            c != carried.end() && now - c->second < kCarryMs;
-        if (selfFresh || (renewing && carriedFresh)) carried[entry.first] = now;
-    }
-}
-
-// Shared press handling for keys that feed the movement chord (wasd, qe and
-// the arrow sentinels). A re-press of an already-held key renews the whole
-// combo; pressing the opposite direction evicts a silent partner as a brake.
+// Only a real finger press proves a key is down, so ride-along windows are
+// granted at presses only: the pressed key plus every partner that was
+// alive at that moment (whose auto-repeats the press just stole). Repeats
+// refresh nothing but their own key, so a partner that was released always
+// fades out within the carry window -- no immortal ghost directions riding
+// along with a key that keeps repeating. Pressing the opposite direction
+// evicts a silent partner as a brake.
 void Terminal::Impl::chordPress(char ch) {
-    const bool renewing = held.find(ch) != held.end();
+    const auto now = Clock::now();
+    const auto prev = held.find(ch);
+    // An auto-repeat lands inside the fade window of the key's previous
+    // event; a larger gap means a genuine (re)press.
+    const bool fresh = prev == held.end() || now - prev->second >= kKeyFadeMs;
     const char opp = oppositeOf(ch);
     const auto it = held.find(opp);
-    if (it != held.end() && Clock::now() - it->second >= kKeyFadeMs) {
+    if (it != held.end() && now - it->second >= kKeyFadeMs) {
         held.erase(it);
         carried.erase(opp);
     }
-    held[ch] = Clock::now();
-    refreshHeld(renewing);
+    held[ch] = now;
+    if (fresh && held.size() >= 2) {
+        for (const auto& e : held) {
+            if (now - e.second < kKeyFadeMs) carried[e.first] = now;
+        }
+    }
 }
 
 void Terminal::Impl::key(char ch, Input& input) {

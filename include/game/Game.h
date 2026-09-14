@@ -8,6 +8,7 @@
 #include "platform/Display.h"
 #include "ui/Hud.h"
 #include "ui/Minimap.h"
+#include "ui/Menu.h"
 #include <chrono>
 #include <string>
 #include <vector>
@@ -23,6 +24,8 @@ private:
     using Clock = std::chrono::steady_clock;
 
     void pollInput();
+    void handleMenuInput();
+    void applyMenuCommand(Menu::Command cmd);
     void update(float dt);
     void render();
 
@@ -33,6 +36,7 @@ private:
     Raycaster raycaster_;
     Minimap minimap_;
     Hud hud_;
+    Menu menu_;
     CharGrid grid_;
     std::vector<float> depthBuffer_;
     Diagnostics diag_;

@@ -32,6 +32,18 @@ void Game::pollInput() {
         running_ = false;
         return;
     }
+    if (input_.triggered(Action::MenuToggle)) {
+        if (menu_.active()) {
+            // Esc acts as back: settings page to main, main to close.
+            applyMenuCommand(menu_.handle(Menu::Event::Back));
+        } else {
+            menu_.setActive(true);
+        }
+    }
+    if (menu_.active()) {
+        handleMenuInput();
+        return;  // gameplay shortcuts are unavailable while the menu is up
+    }
     if (input_.triggered(Action::ToggleMinimap)) showMinimap_ = !showMinimap_;
     if (input_.triggered(Action::ToggleFullscreen)) display_->toggleFullscreen();
     if (input_.triggered(Action::FovNarrow)) {
@@ -42,12 +54,49 @@ void Game::pollInput() {
     }
 }
 
-void Game::update(float dt) {
-    const int mx = input_.mouseDx();
-    const int my = input_.mouseDy();
-    if (mx != 0 || my != 0) player_.turn(mx, my);
+void Game::handleMenuInput() {
+    if (input_.triggered(Action::MenuUp)) {
+        applyMenuCommand(menu_.handle(Menu::Event::Up));
+    } else if (input_.triggered(Action::MenuDown)) {
+        applyMenuCommand(menu_.handle(Menu::Event::Down));
+    } else if (input_.triggered(Action::MenuLeft)) {
+        applyMenuCommand(menu_.handle(Menu::Event::Left));
+    } else if (input_.triggered(Action::MenuRight)) {
+        applyMenuCommand(menu_.handle(Menu::Event::Right));
+    } else if (input_.triggered(Action::MenuConfirm)) {
+        applyMenuCommand(menu_.handle(Menu::Event::Confirm));
+    }
+}
 
-    player_.update(dt, input_.wish(), map_);
+void Game::applyMenuCommand(Menu::Command cmd) {
+    switch (cmd) {
+        case Menu::Command::Resume: menu_.setActive(false); break;
+        case Menu::Command::Exit: running_ = false; break;
+        case Menu::Command::FovDown:
+            player_.fov = std::max(kMinFov, player_.fov - 5.0f);
+            break;
+        case Menu::Command::FovUp:
+            player_.fov = std::min(kMaxFov, player_.fov + 5.0f);
+            break;
+        case Menu::Command::ToggleMinimap: showMinimap_ = !showMinimap_; break;
+        case Menu::Command::ToggleFullscreen:
+            display_->toggleFullscreen();
+            break;
+        case Menu::Command::None: break;
+    }
+}
+
+void Game::update(float dt) {
+    const bool menuUp = menu_.active();
+    if (!menuUp) {
+        const int mx = input_.mouseDx();
+        const int my = input_.mouseDy();
+        if (mx != 0 || my != 0) player_.turn(mx, my);
+    }
+
+    // While the menu is up the world keeps running, but the player only
+    // coasts: no steering input until the menu closes.
+    player_.update(dt, menuUp ? Vec2{} : input_.wish(), map_);
 
     // Push the player out of crystal sprites.
     for (const Vec2& c : map_.crystals()) {
@@ -64,9 +113,15 @@ void Game::render() {
 
     raycaster_.render(grid_, map_, player_, depthBuffer_);
     Sprite::drawCrystals(grid_, map_, player_, depthBuffer_, horizon);
-    if (showMinimap_) minimap_.render(grid_, map_, player_);
 
-    hud_.draw(grid_, player_, fps_);
+    // HUD overlays hide behind the menu until it closes again.
+    if (!menu_.active()) {
+        if (showMinimap_) minimap_.render(grid_, map_, player_);
+        hud_.draw(grid_, player_, fps_);
+    }
+
+    menu_.draw(grid_, static_cast<int>(std::lround(player_.fov)), showMinimap_,
+               display_->fullscreen());
 }
 
 int Game::run() {
@@ -98,7 +153,7 @@ int Game::run() {
         auto t1 = Clock::now();
         render();
         auto t2 = Clock::now();
-        if (debug_) {
+        if (debug_ && !menu_.active()) {
             diag_.drawOverlay(grid_, static_cast<int>(std::lround(fps_)));
         }
         display_->present(grid_);

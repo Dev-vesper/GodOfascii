@@ -18,13 +18,15 @@ public:
     int height() const { return height_; }
 
     void clear();
-    void set(int x, int y, char ch, Rgb fg, Rgb bg);
+    // Inlined: the render loops call this for every cell every frame.
+    void set(int x, int y, char ch, Rgb fg, Rgb bg) {
+        if (x < 0 || y < 0 || x >= width_ || y >= height_) return;
+        cells_[y * width_ + x] = {ch, fg, bg};
+    }
     void setText(int x, int y, std::string_view text, Rgb fg, Rgb bg);
-    const Cell& at(int x, int y) const { return cells_[index(x, y)]; }
+    const Cell& at(int x, int y) const { return cells_[y * width_ + x]; }
 
 private:
-    int index(int x, int y) const { return y * width_ + x; }
-
     int width_ = 0;
     int height_ = 0;
     std::vector<Cell> cells_;

@@ -102,46 +102,15 @@ void Raycaster::render(CharGrid& grid, const Map& map, const Player& player,
     const Vec2 dir = player.dir();
     const Vec2 plane = player.plane();
 
-    // --- Floor and ceiling: perspective-correct row casting. ---
-    const Vec2 rayDir0 = dir - plane;  // leftmost ray
-    const Vec2 rayDir1 = dir + plane;  // rightmost ray
-    for (int y = 0; y < h; ++y) {
-        const bool isFloor = y > horizon;
-        const int p = isFloor ? y - horizon : horizon - y;
-        if (p == 0) continue;
-        const float rowDist = (0.5f * h) / p;
-        const float fog = 1.0f - std::exp(-rowDist * kFogDensity);
+    // --- Walls first: DDA with glyph texturing. Each column records the
+    // span it painted so the floor/ceiling pass never overdraws it. ---
+    struct Span {
+        int top = 0;
+        int bottom = -1;
+    };
+    static std::vector<Span> spans;
+    spans.assign(w, Span{0, -1});
 
-        float fx = player.pos.x + rowDist * rayDir0.x;
-        float fy = player.pos.y + rowDist * rayDir0.y;
-        const float stepX = rowDist * (rayDir1.x - rayDir0.x) / w;
-        const float stepY = rowDist * (rayDir1.y - rayDir0.y) / w;
-
-        const Rgb baseA = isFloor ? kFloorA : kCeilA;
-        const Rgb baseB = isFloor ? kFloorB : kCeilB;
-
-        for (int x = 0; x < w; ++x) {
-            const int cellX = static_cast<int>(fx);
-            const int cellY = static_cast<int>(fy);
-            const int tx = static_cast<int>((fx - cellX) * 4.0f);
-            const int ty = static_cast<int>((fy - cellY) * 4.0f);
-            const bool alt = ((cellX + cellY) & 1) != 0;
-            Rgb col = lerp(alt ? baseB : baseA, kFogColor, fog);
-
-            char ch = ' ';
-            const int hash = floorHash(cellX, cellY, tx, ty) & 31;
-            if (hash == 0) {
-                ch = isFloor ? '.' : '`';
-            } else if (hash == 7) {
-                ch = isFloor ? ',' : '\'';
-            }
-            grid.set(x, y, ch, lerp(scale(baseA, 0.7f), kFogColor, fog), col);
-            fx += stepX;
-            fy += stepY;
-        }
-    }
-
-    // --- Walls: DDA with glyph texturing. ---
     for (int x = 0; x < w; ++x) {
         const float cameraX = 2.0f * x / static_cast<float>(w) - 1.0f;
         const Vec2 ray = dir + plane * cameraX;
@@ -213,6 +182,56 @@ void Raycaster::render(CharGrid& grid, const Map& map, const Player& player,
             const Rgb fg = lerp(scale(base, light), kFogColor, fog);
             const Rgb bg = lerp(scale(base, light * 0.35f), kFogColor, fog);
             grid.set(x, y, ch, fg, bg);
+        }
+        spans[x] = Span{y0, y1};
+    }
+
+    // --- Floor and ceiling: perspective-correct row casting, filling only
+    // the cells the wall columns did not already cover. ---
+    const Vec2 rayDir0 = dir - plane;  // leftmost ray
+    const Vec2 rayDir1 = dir + plane;  // rightmost ray
+    for (int y = 0; y < h; ++y) {
+        const bool isFloor = y > horizon;
+        const int p = isFloor ? y - horizon : horizon - y;
+        if (p == 0) continue;
+        const float rowDist = (0.5f * h) / p;
+        const float fog = 1.0f - std::exp(-rowDist * kFogDensity);
+
+        float fx = player.pos.x + rowDist * rayDir0.x;
+        float fy = player.pos.y + rowDist * rayDir0.y;
+        const float stepX = rowDist * (rayDir1.x - rayDir0.x) / w;
+        const float stepY = rowDist * (rayDir1.y - rayDir0.y) / w;
+
+        const Rgb baseA = isFloor ? kFloorA : kCeilA;
+        const Rgb baseB = isFloor ? kFloorB : kCeilB;
+        const Rgb noiseFg = lerp(scale(baseA, 0.7f), kFogColor, fog);
+        const Rgb rowBg[2] = {lerp(baseA, kFogColor, fog),
+                              lerp(baseB, kFogColor, fog)};
+
+        for (int x = 0; x < w; ++x) {
+            const Span& s = spans[x];
+            // Ceiling rows are visible above the wall span, floor rows
+            // below it; the wall pass owns everything in between.
+            const bool visible =
+                isFloor ? y > s.bottom : y < s.top;
+            if (visible) {
+                const int cellX = static_cast<int>(fx);
+                const int cellY = static_cast<int>(fy);
+                const int tx = static_cast<int>((fx - cellX) * 4.0f);
+                const int ty = static_cast<int>((fy - cellY) * 4.0f);
+                const bool alt = ((cellX + cellY) & 1) != 0;
+
+                char ch = ' ';
+                const int hash = floorHash(cellX, cellY, tx, ty) & 31;
+                if (hash == 0) {
+                    ch = isFloor ? '.' : '`';
+                } else if (hash == 7) {
+                    ch = isFloor ? ',' : '\'';
+                }
+                grid.set(x, y, ch, noiseFg, rowBg[alt]);
+            }
+            fx += stepX;
+            fy += stepY;
         }
     }
 }

@@ -12,11 +12,6 @@ void CharGrid::clear() {
     std::fill(cells_.begin(), cells_.end(), Cell{});
 }
 
-void CharGrid::set(int x, int y, char ch, Rgb fg, Rgb bg) {
-    if (x < 0 || y < 0 || x >= width_ || y >= height_) return;
-    cells_[index(x, y)] = {ch, fg, bg};
-}
-
 void CharGrid::setText(int x, int y, std::string_view text, Rgb fg, Rgb bg) {
     for (char ch : text) {
         if (x >= width_) break;

@@ -20,6 +20,8 @@ public:
     // snapshot first, then fill it with events observed since the last call.
     virtual void pollInput(Input& input) = 0;
     virtual void toggleFullscreen() {}
+    // Whether the backend currently presents fullscreen (window backends).
+    virtual bool fullscreen() const { return false; }
     // Bytes the most recent present() shipped to the display, for debugging.
     virtual size_t lastFrameBytes() const { return 0; }
 

@@ -113,7 +113,7 @@ void SdlDisplay::pollInput(Input& input) {
                 break;
             case SDL_KEYDOWN:
                 switch (event.key.keysym.sym) {
-                    case SDLK_ESCAPE: input.setAction(Action::Quit); break;
+                    case SDLK_ESCAPE: input.setAction(Action::MenuToggle); break;
                     case SDLK_TAB: input.setAction(Action::ToggleMinimap); break;
                     case SDLK_F11:
                         input.setAction(Action::ToggleFullscreen);
@@ -123,6 +123,15 @@ void SdlDisplay::pollInput(Input& input) {
                         break;
                     case SDLK_RIGHTBRACKET:
                         input.setAction(Action::FovWiden);
+                        break;
+                    case SDLK_UP: input.setAction(Action::MenuUp); break;
+                    case SDLK_DOWN: input.setAction(Action::MenuDown); break;
+                    case SDLK_LEFT: input.setAction(Action::MenuLeft); break;
+                    case SDLK_RIGHT: input.setAction(Action::MenuRight); break;
+                    case SDLK_RETURN:
+                    case SDLK_RETURN2:
+                    case SDLK_KP_ENTER:
+                        input.setAction(Action::MenuConfirm);
                         break;
                     default: break;
                 }
@@ -165,4 +174,8 @@ void SdlDisplay::toggleFullscreen() {
             ? 0
             : SDL_WINDOW_FULLSCREEN_DESKTOP;
     SDL_SetWindowFullscreen(impl_->window, flags);
+}
+
+bool SdlDisplay::fullscreen() const {
+    return (SDL_GetWindowFlags(impl_->window) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
 }

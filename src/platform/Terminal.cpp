@@ -68,15 +68,39 @@ void Terminal::Impl::keyEvent(const KEY_EVENT_RECORD& rec, Input& input) {
     const bool down = rec.bKeyDown != FALSE;
     switch (vk) {
         case 'W': case 'A': case 'S': case 'D':
-        case VK_UP: case VK_DOWN:
             if (down) {
                 held.insert(vk);
             } else {
                 held.erase(vk);
             }
             break;
+        case VK_UP:
+            if (down) {
+                held.insert(vk);
+                input.setAction(Action::MenuUp);
+            } else {
+                held.erase(vk);
+            }
+            break;
+        case VK_DOWN:
+            if (down) {
+                held.insert(vk);
+                input.setAction(Action::MenuDown);
+            } else {
+                held.erase(vk);
+            }
+            break;
+        case VK_LEFT:
+            if (down) input.setAction(Action::MenuLeft);
+            break;
+        case VK_RIGHT:
+            if (down) input.setAction(Action::MenuRight);
+            break;
+        case VK_RETURN:
+            if (down) input.setAction(Action::MenuConfirm);
+            break;
         case VK_ESCAPE:
-            if (down) input.setAction(Action::Quit);
+            if (down) input.setAction(Action::MenuToggle);
             break;
         case VK_TAB:
             if (down) input.setAction(Action::ToggleMinimap);
@@ -245,6 +269,7 @@ void Terminal::Impl::key(char ch, Input& input) {
         case '\t': input.setAction(Action::ToggleMinimap); break;
         case '[': input.setAction(Action::FovNarrow); break;
         case ']': input.setAction(Action::FovWiden); break;
+        case '\r': case '\n': input.setAction(Action::MenuConfirm); break;
         case '\x03': input.setAction(Action::Quit); break;  // Ctrl+C
         default: break;
     }
@@ -254,10 +279,20 @@ void Terminal::Impl::sequence(const char* params, size_t n, char finalByte,
                               Input& input) {
     if (finalByte == 'A') {
         held['^'] = Clock::now();  // arrow up
+        input.setAction(Action::MenuUp);
         return;
     }
     if (finalByte == 'B') {
         held['v'] = Clock::now();  // arrow down
+        input.setAction(Action::MenuDown);
+        return;
+    }
+    if (finalByte == 'C') {  // arrow right
+        input.setAction(Action::MenuRight);
+        return;
+    }
+    if (finalByte == 'D') {  // arrow left
+        input.setAction(Action::MenuLeft);
         return;
     }
     if (finalByte != 'M' && finalByte != 'm') return;
@@ -377,7 +412,7 @@ void Terminal::pollInput(Input& input) {
                 continue;
             }
             if (i + 1 >= len) {
-                input.setAction(Action::Quit);  // lone escape byte
+                input.setAction(Action::MenuToggle);  // lone escape byte
                 ++i;
                 continue;
             }

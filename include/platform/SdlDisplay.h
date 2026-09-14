@@ -19,6 +19,7 @@ public:
     void present(const CharGrid& grid) override;
     void pollInput(Input& input) override;
     void toggleFullscreen() override;
+    bool fullscreen() const override;
 
 private:
     struct Impl;

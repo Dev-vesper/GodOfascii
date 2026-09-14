@@ -20,7 +20,7 @@ void Hud::draw(CharGrid& grid, const Player& player, float fps) const {
     const int y = grid.height() - 1;
     if (y < 1) return;
     grid.setText(1, y,
-                 "WASD move | mouse look | Tab map | [ ] fov | F11 full | Esc quit",
+                 "WASD move | mouse look | Tab map | [ ] fov | F11 full | Esc menu",
                  kHudFg, kHudBg);
     char buf[72];
     std::snprintf(buf, sizeof buf, "FPS %d | FOV %d | %dx%d",

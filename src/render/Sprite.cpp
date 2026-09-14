@@ -40,9 +40,11 @@ void Sprite::drawCrystals(CharGrid& grid, const Map& map, const Player& player,
 
     for (const Vec2& sprite : map.crystals()) {
         const Vec2 rel = sprite - player.pos;
-        const float transX = invDet * (dir.y * rel.x - dir.x * rel.y);
         const float transY = invDet * (-plane.y * rel.x + plane.x * rel.y);
+        const float fog = 1.0f - std::exp(-transY * kFogDensity);
         if (transY < 0.15f) continue;  // behind the camera
+        if (fog > 0.97f) continue;     // fully swallowed by fog
+        const float transX = invDet * (dir.y * rel.x - dir.x * rel.y);
 
         const int screenX =
             static_cast<int>((w / 2.0f) * (1.0f + transX / transY));
@@ -52,7 +54,6 @@ void Sprite::drawCrystals(CharGrid& grid, const Map& map, const Player& player,
         // Stand on the floor: bottom edge at eye level minus half a tile.
         const int bottom = horizon + static_cast<int>(sizePx * 0.5f);
         const int top = bottom - spriteH;
-        const float fog = 1.0f - std::exp(-transY * kFogDensity);
 
         const int x0 = std::max(0, screenX - spriteW / 2);
         const int x1 = std::min(w - 1, screenX + spriteW / 2);

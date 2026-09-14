@@ -126,6 +126,7 @@ void Game::render() {
 
 int Game::run() {
     if (!map_.loaded()) {
+        display_.reset();  // leave the alternate screen so this stays readable
         std::cerr << "error: " << map_.error() << "\n";
         return 1;
     }

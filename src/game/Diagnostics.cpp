@@ -104,7 +104,3 @@ void Diagnostics::writeSummary(const std::string& path) const {
     }
     std::fclose(f);
 }
-
-float Diagnostics::worstFrameMs() const {
-    return percentile(frameMs_, 1.0f);
-}

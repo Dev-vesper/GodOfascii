@@ -20,7 +20,6 @@ public:
 
     Vec2 dir() const { return {std::cos(angle), std::sin(angle)}; }
     Vec2 plane() const;  // camera plane; its length encodes the FOV
-    Vec2 velocity() const { return vel_; }
     float speed() const { return length(vel_); }
 
     void turn(int mouseDx, int mouseDy);

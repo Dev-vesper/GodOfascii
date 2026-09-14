@@ -20,8 +20,6 @@ public:
     void drawOverlay(CharGrid& grid, int fps) const;
     void writeSummary(const std::string& path) const;
 
-    float worstFrameMs() const;
-
 private:
     static float percentile(const std::vector<float>& v, float p);
 

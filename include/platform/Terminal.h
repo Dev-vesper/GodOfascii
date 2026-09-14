@@ -7,9 +7,12 @@
 // says the terminal supports it, otherwise the xterm-256 palette
 // (ASCII3D_COLOR=truecolor|256 overrides). Used when no graphical session
 // exists (SSH, headless machines, the FreeBSD console) -- no external
-// library required. ASCII3D_DEBUG=1 additionally records every input poll
-// (raw bytes, chord clocks, intent) to /tmp/ascii3d-input.txt, path
-// override ASCII3D_INPUT_LOG.
+// library required. Terminals that speak the kitty keyboard protocol get
+// real key release events, so held key chords last exactly as long as the
+// fingers stay down (ASCII3D_KITTY=0 disables that handshake). Everything
+// else keeps the legacy typematic heuristics. ASCII3D_DEBUG=1 additionally
+// records every input poll (raw bytes, chord clocks, intent) to
+// /tmp/ascii3d-input.txt, path override ASCII3D_INPUT_LOG.
 class Terminal : public Display {
 public:
     // allowNonTty skips the is-a-terminal check so the backend can be forced

@@ -110,7 +110,6 @@ void Terminal::Impl::keyEvent(const KEY_EVENT_RECORD& rec, Input& input) {
     switch (vk) {
         case 'W': case 'A': case 'S': case 'D':
         case 'Q': case 'E':
-        case 'Y': case 'U': case 'B': case 'N':
             if (down) {
                 held.insert(vk);
             } else {
@@ -171,10 +170,6 @@ void Terminal::Impl::buildWish(Input& input) {
     if (held.count('S') != 0 || held.count(VK_DOWN) != 0) wish.y -= 1.0f;
     if (held.count('D') != 0) wish.x += 1.0f;
     if (held.count('A') != 0) wish.x -= 1.0f;
-    if (held.count('Y') != 0) { wish.x -= 1.0f; wish.y += 1.0f; }
-    if (held.count('U') != 0) { wish.x += 1.0f; wish.y += 1.0f; }
-    if (held.count('B') != 0) { wish.x -= 1.0f; wish.y -= 1.0f; }
-    if (held.count('N') != 0) { wish.x += 1.0f; wish.y -= 1.0f; }
     input.setWish(length(wish) > 0.0f ? normalized(wish) : wish);
 }
 
@@ -285,17 +280,6 @@ constexpr auto kKeyFadeMs = std::chrono::milliseconds(350);
 // repeating.
 constexpr auto kCarryMs = std::chrono::milliseconds(2500);
 
-// Kitty keyboard protocol (kitty, ghostty, foot, recent VTE...): the
-// terminal reports real press/repeat/release events for every key, which
-// makes the typematic guesswork above unnecessary -- chords hold as long
-// as the fingers stay down and stop the instant they lift. We push flags
-// disambiguate|event-types|all-keys-as-escapes (1|2|8 = 11) and ask the
-// terminal what it could set. Terminals that never heard of the protocol
-// ignore the handshake and keep speaking legacy bytes, where the clocks
-// above stay in charge. ASCII3D_KITTY=0 skips the handshake entirely.
-constexpr char kKittyOn[] = "\x1b[>11u\x1b[?u";
-constexpr char kKittyOff[] = "\x1b[<u";
-
 // The key that means the opposite direction, 0 when not a direction key.
 // Pressing it brakes a chord partner that went typematic-silent.
 char oppositeOf(char c) {
@@ -308,10 +292,6 @@ char oppositeOf(char c) {
         case 'e': return 'q';
         case '^': return 'v';
         case 'v': return '^';
-        case 'y': return 'n';
-        case 'n': return 'y';
-        case 'u': return 'b';
-        case 'b': return 'u';
         default: return 0;
     }
 }
@@ -321,8 +301,7 @@ bool g_isTty = false;
 
 extern "C" void restoreAndExit(int) {
     if (g_isTty) tcsetattr(STDIN_FILENO, TCSANOW, &g_savedTty);
-    ssize_t ignored = write(STDOUT_FILENO, kKittyOff, sizeof(kKittyOff) - 1);
-    ignored = write(STDOUT_FILENO, kRestore, sizeof(kRestore) - 1);
+    ssize_t ignored = write(STDOUT_FILENO, kRestore, sizeof(kRestore) - 1);
     (void)ignored;
     _exit(1);
 }
@@ -354,15 +333,9 @@ struct Terminal::Impl {
     // diagnosing keyboard quirks on consoles.
     FILE* log = nullptr;
     Clock::time_point t0{};
-    // True once the terminal proved full kitty-keyboard support (query
-    // answer or a text-key event with event types). Held keys then carry
-    // real release events, so they never fade and chord heuristics are
-    // bypassed.
-    bool kitty = false;
 
     void key(char ch, Input& input);
     void sequence(const char* params, size_t n, char finalByte, Input& input);
-    void kittyKey(const char* params, size_t n, Input& input);
     void applyHeld(Input& input);
     void chordPress(char ch);
     void logFrame(const Input& input, const char* buf, ssize_t n);
@@ -395,95 +368,10 @@ void Terminal::Impl::chordPress(char ch) {
     }
 }
 
-// CSI u events from the kitty keyboard protocol. Parameters are either
-// "?flags" -- the answer to our support query -- or "code[;mods[:event]]"
-// with event 1 = press, 2 = auto-repeat, 3 = release. Real release events
-// replace every heuristic: a key is down from its press until its release.
-void Terminal::Impl::kittyKey(const char* params, size_t n, Input& input) {
-    if (n == 0) return;
-    if (params[0] == '?') {
-        int flags = 0;
-        for (size_t k = 1; k < n && params[k] >= '0' && params[k] <= '9';
-             ++k) {
-            flags = flags * 10 + (params[k] - '0');
-        }
-        // Trust the mode only when the terminal really reports event types
-        // (2) and encodes text keys as escapes (8); without both, letters
-        // still arrive as legacy typematic bytes and the clocks must rule.
-        kitty = (flags & 2) != 0 && (flags & 8) != 0;
-        return;
-    }
-    int code = 0;
-    size_t i = 0;
-    for (; i < n && params[i] >= '0' && params[i] <= '9'; ++i) {
-        code = code * 10 + (params[i] - '0');
-    }
-    if (i == 0) return;  // not a key event
-    int mods = 1;
-    int event = 0;  // 0 = not reported
-    if (i < n && params[i] == ';') {
-        ++i;
-        int m = 0;
-        bool any = false;
-        for (; i < n && params[i] >= '0' && params[i] <= '9'; ++i) {
-            m = m * 10 + (params[i] - '0');
-            any = true;
-        }
-        if (any) mods = m;
-        if (i < n && params[i] == ':') {
-            ++i;
-            for (; i < n && params[i] >= '0' && params[i] <= '9'; ++i) {
-                event = event * 10 + (params[i] - '0');
-            }
-        }
-    }
-    // A text key reported as a CSI escape with an event type proves the
-    // full stack is live: releases will arrive for letters too.
-    if (event != 0 && code < 57344) kitty = true;
-    if (code >= 'A' && code <= 'Z') code += 'a' - 'A';
-
-    char move = 0;
-    switch (code) {
-        case 'w': case 'a': case 's': case 'd': case 'q': case 'e':
-        case 'y': case 'u': case 'b': case 'n':
-            move = static_cast<char>(code);
-            break;
-        case 57350: move = '^'; break;  // functional codes: arrows
-        case 57351: move = 'v'; break;
-    }
-    if (move != 0) {
-        if (event == 3) {
-            held.erase(move);
-            carried.erase(move);
-        } else {
-            held[move] = Clock::now();
-            if (move == '^') input.setAction(Action::MenuUp);
-            if (move == 'v') input.setAction(Action::MenuDown);
-        }
-        return;
-    }
-    if (event == 3) return;  // releases of one-shot keys do nothing
-    const bool ctrl = ((mods - 1) & 4) != 0;
-    switch (code) {
-        case 57348: input.setAction(Action::MenuLeft); return;
-        case 57349: input.setAction(Action::MenuRight); return;
-        case 9: input.setAction(Action::ToggleMinimap); return;
-        case 13: input.setAction(Action::MenuConfirm); return;
-        case 27: input.setAction(Action::MenuToggle); return;
-        case '[': input.setAction(Action::FovNarrow); return;
-        case ']': input.setAction(Action::FovWiden); return;
-        case 'c':
-            if (ctrl) input.setAction(Action::Quit);
-            return;
-        default: return;
-    }
-}
-
 void Terminal::Impl::key(char ch, Input& input) {
     if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
     switch (ch) {
         case 'w': case 's': case 'a': case 'd': case 'q': case 'e':
-        case 'y': case 'u': case 'b': case 'n':
             chordPress(ch);
             break;
         case '\t': input.setAction(Action::ToggleMinimap); break;
@@ -497,40 +385,13 @@ void Terminal::Impl::key(char ch, Input& input) {
 
 void Terminal::Impl::sequence(const char* params, size_t n, char finalByte,
                               Input& input) {
-    if (finalByte == 'u') {  // kitty keyboard protocol event
-        kittyKey(params, n, input);
-        return;
-    }
-    // Kitty terminals may append ";mods:event" to otherwise legacy-looking
-    // sequences (arrows); event type 3 is a release. Legacy parameters
-    // (SGR mouse reports) never contain ':'.
-    int event = 0;
-    for (size_t k = n; k-- > 0;) {
-        if (params[k] != ':') continue;
-        for (size_t m = k + 1; m < n && params[m] >= '0' && params[m] <= '9';
-             ++m) {
-            event = event * 10 + (params[m] - '0');
-        }
-        break;
-    }
-    if (event == 3) {  // release: only the held arrow sentinels matter
-        if (finalByte == 'A') {
-            held.erase('^');
-            carried.erase('^');
-        }
-        if (finalByte == 'B') {
-            held.erase('v');
-            carried.erase('v');
-        }
-        return;
-    }
     if (finalByte == 'A') {
-        if (kitty) held['^'] = Clock::now(); else chordPress('^');
+        chordPress('^');  // arrow up
         input.setAction(Action::MenuUp);
         return;
     }
     if (finalByte == 'B') {
-        if (kitty) held['v'] = Clock::now(); else chordPress('v');
+        chordPress('v');  // arrow down
         input.setAction(Action::MenuDown);
         return;
     }
@@ -575,40 +436,32 @@ void Terminal::Impl::applyHeld(Input& input) {
     Vec2 wish{};
     float turn = 0.0f;  // synthetic mouse pixels from the turn keys
     for (auto it = held.begin(); it != held.end();) {
-        // Kitty mode gets real release events, so a held key keeps full
-        // weight until its release erases it. Legacy terminals keep
-        // guessing with the two clocks below.
-        float w = 1.0f;
-        if (!kitty) {
-            const auto selfAge =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    now - it->second);
-            // Fast clock: decays between typematic repeats, dies after
-            // release.
-            w = selfAge < kKeyFadeMs
-                    ? 1.0f - static_cast<float>(selfAge.count()) /
-                                 static_cast<float>(kKeyFadeMs.count())
-                    : 0.0f;
-            const auto c = carried.find(it->first);
-            if (c != carried.end()) {
-                const auto carryAge =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        now - c->second);
-                if (carryAge < kCarryMs) {
-                    // Slow clock: full weight for the first half of the
-                    // window so re-taps do not pulse the Q/E turn rate,
-                    // then a linear fade so a going-stale chord eases off
-                    // instead of stopping dead at the deadline.
-                    const float carryW =
-                        std::min(1.0f,
-                                 2.0f * (1.0f -
-                                         static_cast<float>(carryAge.count()) /
-                                             static_cast<float>(
-                                                 kCarryMs.count())));
-                    w = std::max(w, carryW);
-                } else {
-                    carried.erase(c);
-                }
+        const auto selfAge = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - it->second);
+        // Fast clock: decays between typematic repeats, dies after release.
+        float w = selfAge < kKeyFadeMs
+                      ? 1.0f - static_cast<float>(selfAge.count()) /
+                                   static_cast<float>(kKeyFadeMs.count())
+                      : 0.0f;
+        const auto c = carried.find(it->first);
+        if (c != carried.end()) {
+            const auto carryAge =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now -
+                                                                      c->second);
+            if (carryAge < kCarryMs) {
+                // Slow clock: full weight for the first half of the window
+                // so re-taps do not pulse the Q/E turn rate, then a linear
+                // fade so a going-stale chord eases off instead of stopping
+                // dead at the deadline.
+                const float carryW =
+                    std::min(1.0f,
+                             2.0f * (1.0f -
+                                     static_cast<float>(carryAge.count()) /
+                                         static_cast<float>(
+                                             kCarryMs.count())));
+                w = std::max(w, carryW);
+            } else {
+                carried.erase(c);
             }
         }
         if (w <= 0.0f) {
@@ -620,12 +473,6 @@ void Terminal::Impl::applyHeld(Input& input) {
             case 's': case 'v': wish.y -= w; break;
             case 'd': wish.x += w; break;
             case 'a': wish.x -= w; break;
-            // Diagonals: single keys, so they auto-repeat solo on every
-            // terminal -- no chord clocks needed to hold a diagonal.
-            case 'y': wish.x -= w; wish.y += w; break;
-            case 'u': wish.x += w; wish.y += w; break;
-            case 'b': wish.x -= w; wish.y -= w; break;
-            case 'n': wish.x += w; wish.y -= w; break;
             case 'q': turn -= w; break;
             case 'e': turn += w; break;
             default: break;
@@ -674,8 +521,8 @@ void Terminal::Impl::logFrame(const Input& input, const char* buf, ssize_t n) {
     dump("held", held);
     dump("carried", carried);
     const Vec2 w = input.wish();
-    std::fprintf(log, " wish=(%+.2f,%+.2f) dx=%d kitty=%d\n", w.x, w.y,
-                 input.mouseDx(), kitty ? 1 : 0);
+    std::fprintf(log, " wish=(%+.2f,%+.2f) dx=%d\n", w.x, w.y,
+                 input.mouseDx());
     std::fflush(log);
 }
 
@@ -699,10 +546,6 @@ Terminal::Terminal(bool allowNonTty) : impl_(std::make_unique<Impl>()) {
     signal(SIGTERM, restoreAndExit);
     signal(SIGHUP, restoreAndExit);
     writeAll(kSetup, sizeof(kSetup) - 1);
-    const char* noKitty = std::getenv("ASCII3D_KITTY");
-    if (noKitty == nullptr || noKitty[0] != '0') {
-        writeAll(kKittyOn, sizeof(kKittyOn) - 1);
-    }
     impl_->t0 = Clock::now();
     const char* dbg = std::getenv("ASCII3D_DEBUG");
     if (dbg != nullptr && dbg[0] != '\0' && dbg[0] != '0') {
@@ -713,7 +556,7 @@ Terminal::Terminal(bool allowNonTty) : impl_(std::make_unique<Impl>()) {
             std::fprintf(impl_->log,
                          "# fade=%dms carry=%dms; per poll: tMs "
                          "[raw=bytes] held=key:ageMs carried=key:ageMs "
-                         "wish=(x,y) dx kitty\n",
+                         "wish=(x,y) dx\n",
                          static_cast<int>(kKeyFadeMs.count()),
                          static_cast<int>(kCarryMs.count()));
         }
@@ -724,7 +567,6 @@ Terminal::Terminal(bool allowNonTty) : impl_(std::make_unique<Impl>()) {
 Terminal::~Terminal() {
     if (!impl_ || !impl_->ok) return;
     if (impl_->log != nullptr) std::fclose(impl_->log);
-    writeAll(kKittyOff, sizeof(kKittyOff) - 1);
     writeAll(kRestore, sizeof(kRestore) - 1);
     if (g_isTty) tcsetattr(STDIN_FILENO, TCSANOW, &g_savedTty);
     g_isTty = false;

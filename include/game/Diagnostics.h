@@ -7,7 +7,9 @@ class CharGrid;
 // Development instrumentation: samples per-frame timings and output volume,
 // shows a compact live overlay and dumps a summary on exit. Enable with
 // ASCII3D_DEBUG=1; the dump path defaults to /tmp/ascii3d-stats.txt and can
-// be overridden with ASCII3D_STATS.
+// be overridden with ASCII3D_STATS. The same switch makes the Terminal
+// backend log every input poll (raw key bytes, chord clocks) to
+// /tmp/ascii3d-input.txt (ASCII3D_INPUT_LOG overrides).
 class Diagnostics {
 public:
     static bool enabled();

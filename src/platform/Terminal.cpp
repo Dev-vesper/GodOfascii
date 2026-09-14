@@ -323,11 +323,19 @@ struct Terminal::Impl {
     bool havePrev = false;
     size_t lastBytes = 0;
 
+    // Input-event log, enabled by the same ASCII3D_DEBUG switch as the
+    // perf overlay (ASCII3D_INPUT_LOG overrides the default path): every
+    // poll's raw bytes, chord clock ages and the resulting intent, for
+    // diagnosing keyboard quirks on consoles.
+    FILE* log = nullptr;
+    Clock::time_point t0{};
+
     void key(char ch, Input& input);
     void sequence(const char* params, size_t n, char finalByte, Input& input);
     void applyHeld(Input& input);
     void refreshHeld(bool renewing);
     void chordPress(char ch);
+    void logFrame(const Input& input, const char* buf, ssize_t n);
 };
 
 // Terminals send nothing while two keys are held -- no repeats for either
@@ -479,6 +487,49 @@ void Terminal::Impl::applyHeld(Input& input) {
     if (turn != 0.0f) input.addMouse(static_cast<int>(turn * kTurnPx), 0);
 }
 
+// One line per poll: tMs [raw=bytes] held=key:ageMs carried=key:ageMs
+// wish dx. Printable bytes appear as characters, the rest as <hex>. The
+// file is flushed per line so a signal exit loses at most the last line.
+void Terminal::Impl::logFrame(const Input& input, const char* buf, ssize_t n) {
+    if (log == nullptr) return;
+    const auto now = Clock::now();
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now - t0)
+                        .count();
+    std::fprintf(log, "%lld", static_cast<long long>(ms));
+    if (n > 0) {
+        std::fprintf(log, " raw=");
+        for (ssize_t i = 0; i < n; ++i) {
+            const unsigned char c = static_cast<unsigned char>(buf[i]);
+            if (c >= 0x20 && c < 0x7f) {
+                std::fprintf(log, "%c", c);
+            } else {
+                std::fprintf(log, "<%02x>", c);
+            }
+        }
+    }
+    const auto dump = [&](const char* label,
+                          const std::unordered_map<char, Clock::time_point>& m) {
+        std::fprintf(log, " %s=", label);
+        bool first = true;
+        for (const auto& e : m) {
+            const auto age =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - e.second)
+                    .count();
+            std::fprintf(log, "%s%c:%lld", first ? "" : ",", e.first,
+                         static_cast<long long>(age));
+            first = false;
+        }
+    };
+    dump("held", held);
+    dump("carried", carried);
+    const Vec2 w = input.wish();
+    std::fprintf(log, " wish=(%+.2f,%+.2f) dx=%d\n", w.x, w.y,
+                 input.mouseDx());
+    std::fflush(log);
+}
+
 Terminal::Terminal(bool allowNonTty) : impl_(std::make_unique<Impl>()) {
     impl_->isTty = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
     if (!impl_->isTty && !allowNonTty) return;
@@ -499,11 +550,27 @@ Terminal::Terminal(bool allowNonTty) : impl_(std::make_unique<Impl>()) {
     signal(SIGTERM, restoreAndExit);
     signal(SIGHUP, restoreAndExit);
     writeAll(kSetup, sizeof(kSetup) - 1);
+    impl_->t0 = Clock::now();
+    const char* dbg = std::getenv("ASCII3D_DEBUG");
+    if (dbg != nullptr && dbg[0] != '\0' && dbg[0] != '0') {
+        const char* path = std::getenv("ASCII3D_INPUT_LOG");
+        if (path == nullptr || path[0] == '\0') path = "/tmp/ascii3d-input.txt";
+        impl_->log = std::fopen(path, "w");
+        if (impl_->log != nullptr) {
+            std::fprintf(impl_->log,
+                         "# fade=%dms carry=%dms; per poll: tMs "
+                         "[raw=bytes] held=key:ageMs carried=key:ageMs "
+                         "wish=(x,y) dx\n",
+                         static_cast<int>(kKeyFadeMs.count()),
+                         static_cast<int>(kCarryMs.count()));
+        }
+    }
     impl_->ok = true;
 }
 
 Terminal::~Terminal() {
     if (!impl_ || !impl_->ok) return;
+    if (impl_->log != nullptr) std::fclose(impl_->log);
     writeAll(kRestore, sizeof(kRestore) - 1);
     if (g_isTty) tcsetattr(STDIN_FILENO, TCSANOW, &g_savedTty);
     g_isTty = false;
@@ -560,6 +627,7 @@ void Terminal::pollInput(Input& input) {
         }
     }
     impl_->applyHeld(input);
+    impl_->logFrame(input, buf, n);
 }
 
 #endif  // _WIN32

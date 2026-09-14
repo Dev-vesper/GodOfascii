@@ -1,5 +1,5 @@
 #pragma once
-struct CharGrid;
+class CharGrid;
 class Map;
 class Player;
 

@@ -1,6 +1,6 @@
 #pragma once
 
-struct CharGrid;
+class CharGrid;
 class Player;
 
 // Overlay pass drawn on top of the 3D view: crosshair plus the bottom bar.

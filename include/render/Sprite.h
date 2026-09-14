@@ -2,7 +2,7 @@
 #include "core/Vec2.h"
 #include <vector>
 
-struct CharGrid;
+class CharGrid;
 class Map;
 class Player;
 

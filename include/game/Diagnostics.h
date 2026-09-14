@@ -2,7 +2,7 @@
 #include <string>
 #include <vector>
 
-struct CharGrid;
+class CharGrid;
 
 // Development instrumentation: samples per-frame timings and output volume,
 // shows a compact live overlay and dumps a summary on exit. Enable with

@@ -1,7 +1,7 @@
 #pragma once
 #include <memory>
 
-struct CharGrid;
+class CharGrid;
 class Input;
 
 // A presentation backend: renders character frames and captures input into

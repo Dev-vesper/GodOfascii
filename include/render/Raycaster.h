@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 
-struct CharGrid;
+class CharGrid;
 class Map;
 class Player;
 

@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-struct CharGrid;
+class CharGrid;
 
 // In-game overlay menu: a translucent panel drawn over the live scene. The
 // game keeps running while it is open; the other HUD elements hide. Owns

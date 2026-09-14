@@ -95,8 +95,7 @@ void Raycaster::render(CharGrid& grid, const Map& map, const Player& player,
     depthBuffer.assign(w, 1e30f);
 
     // y-shearing: the horizon moves with pitch and head bob.
-    int horizon = static_cast<int>(h * 0.5f + player.pitch * h + player.headBob());
-    horizon = std::clamp(horizon, h / 6, h - h / 6);
+    const int horizon = player.horizon(h);
 
     const Vec2 dir = player.dir();
     const Vec2 plane = player.plane();

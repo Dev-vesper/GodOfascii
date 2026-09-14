@@ -1,5 +1,6 @@
 #include "game/Player.h"
 #include "game/Map.h"
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -39,6 +40,11 @@ void Player::update(float dt, Vec2 wish, const Map& map) {
 float Player::headBob() const {
     const float intensity = speed() / maxSpeed;
     return std::sin(bobPhase_) * 1.6f * intensity * intensity;
+}
+
+int Player::horizon(int rows) const {
+    const int h = static_cast<int>(rows * 0.5f + pitch * rows + headBob());
+    return std::clamp(h, rows / 6, rows - rows / 6);
 }
 
 void Player::move(const Map& map, Vec2 delta) {

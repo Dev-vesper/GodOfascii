@@ -60,9 +60,7 @@ void Game::update(float dt) {
 }
 
 void Game::render() {
-    const int horizon = static_cast<int>(
-        grid_.height() * 0.5f + player_.pitch * grid_.height() +
-        player_.headBob());
+    const int horizon = player_.horizon(grid_.height());
 
     raycaster_.render(grid_, map_, player_, depthBuffer_);
     Sprite::drawCrystals(grid_, map_, player_, depthBuffer_, horizon);

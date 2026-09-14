@@ -29,6 +29,9 @@ public:
     void update(float dt, Vec2 wish, const Map& map);
     // Vertical view offset in cell rows caused by walking.
     float headBob() const;
+    // Screen row of the horizon for a grid of the given height: y-sheared by
+    // pitch and head bob, clamped so it stays on screen.
+    int horizon(int rows) const;
 
 private:
     void move(const Map& map, Vec2 delta);

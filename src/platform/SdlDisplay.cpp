@@ -57,8 +57,9 @@ bool SdlDisplay::Impl::ensureTexture(int gridW, int gridH) {
 }
 
 void SdlDisplay::Impl::blitCell(const Cell& c, int cx, int cy) {
-    const Uint32 bg = 0xFF000000u | (c.bg.b << 16) | (c.bg.g << 8) | c.bg.r;
-    const Uint32 fg = 0xFF000000u | (c.fg.b << 16) | (c.fg.g << 8) | c.fg.r;
+    // SDL_PIXELFORMAT_ARGB8888 packs a pixel as 0xAARRGGBB.
+    const Uint32 bg = 0xFF000000u | (c.bg.r << 16) | (c.bg.g << 8) | c.bg.b;
+    const Uint32 fg = 0xFF000000u | (c.fg.r << 16) | (c.fg.g << 8) | c.fg.b;
     const int px0 = cx * kCellPx;
     const int py0 = cy * kCellPx;
     const int scale = kCellPx / kGlyphPx;

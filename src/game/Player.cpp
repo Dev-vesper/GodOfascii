@@ -7,6 +7,18 @@ namespace {
 constexpr float kPi = 3.14159265f;
 constexpr float kBodyRadius = 0.2f;
 constexpr float kPitchLimit = 0.35f;  // fraction of screen height
+
+// Advances one coordinate if the body box would not enter a wall. The other
+// coordinate only enters through the two probes at the body's edges.
+void slideAxis(float& coord, float other, float d, const Map& map, bool xAxis) {
+    const float edge = coord + d + (d > 0.0f ? kBodyRadius : -kBodyRadius);
+    const int edgeCell = static_cast<int>(edge);
+    const int lo = static_cast<int>(other - kBodyRadius);
+    const int hi = static_cast<int>(other + kBodyRadius);
+    const bool free = xAxis ? !map.solid(edgeCell, lo) && !map.solid(edgeCell, hi)
+                            : !map.solid(lo, edgeCell) && !map.solid(hi, edgeCell);
+    if (free) coord += d;
+}
 }  // namespace
 
 Vec2 Player::plane() const {
@@ -48,20 +60,6 @@ int Player::horizon(int rows) const {
 }
 
 void Player::move(const Map& map, Vec2 delta) {
-    if (delta.x != 0.0f) {
-        const float edge =
-            pos.x + delta.x + (delta.x > 0.0f ? kBodyRadius : -kBodyRadius);
-        if (!map.solid(static_cast<int>(edge), static_cast<int>(pos.y - kBodyRadius)) &&
-            !map.solid(static_cast<int>(edge), static_cast<int>(pos.y + kBodyRadius))) {
-            pos.x += delta.x;
-        }
-    }
-    if (delta.y != 0.0f) {
-        const float edge =
-            pos.y + delta.y + (delta.y > 0.0f ? kBodyRadius : -kBodyRadius);
-        if (!map.solid(static_cast<int>(pos.x - kBodyRadius), static_cast<int>(edge)) &&
-            !map.solid(static_cast<int>(pos.x + kBodyRadius), static_cast<int>(edge))) {
-            pos.y += delta.y;
-        }
-    }
+    if (delta.x != 0.0f) slideAxis(pos.x, pos.y, delta.x, map, true);
+    if (delta.y != 0.0f) slideAxis(pos.y, pos.x, delta.y, map, false);
 }

@@ -7,17 +7,21 @@
 namespace {
 constexpr int kGlyphPx = 8;   // font glyph size
 constexpr int kCellPx = 16;   // on-screen cell size (2x scale)
-constexpr int kAtlasCols = 16;
 }  // namespace
 
 struct SdlDisplay::Impl {
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
-    SDL_Texture* atlas = nullptr;
+    SDL_Texture* frame = nullptr;  // one streaming texture per frame
+    std::vector<Uint32> pixels;
+    int texW = 0;
+    int texH = 0;
+    size_t lastBytes = 0;
     bool ok = false;
 
     bool init();
-    bool buildAtlas();
+    bool ensureTexture(int gridW, int gridH);
+    void blitCell(const Cell& c, int cx, int cy);
 };
 
 bool SdlDisplay::Impl::init() {
@@ -34,36 +38,42 @@ bool SdlDisplay::Impl::init() {
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     }
     if (renderer == nullptr) return false;
-    if (!buildAtlas()) return false;
     SDL_SetRelativeMouseMode(SDL_TRUE);
     return true;
 }
 
-bool SdlDisplay::Impl::buildAtlas() {
-    SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(
-        0, kAtlasCols * kGlyphPx, (128 / kAtlasCols) * kGlyphPx, 0,
-        SDL_PIXELFORMAT_ARGB8888);
-    if (surf == nullptr) return false;
+bool SdlDisplay::Impl::ensureTexture(int gridW, int gridH) {
+    const int w = gridW * kCellPx;
+    const int h = gridH * kCellPx;
+    if (frame != nullptr && w == texW && h == texH) return true;
+    if (frame != nullptr) SDL_DestroyTexture(frame);
+    frame = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                              SDL_TEXTUREACCESS_STREAMING, w, h);
+    if (frame == nullptr) return false;
+    texW = w;
+    texH = h;
+    pixels.assign(static_cast<size_t>(w) * h, 0xFF000000u);
+    return true;
+}
 
-    Uint32* px = static_cast<Uint32*>(surf->pixels);
-    const int surfW = surf->w;
-    for (int c = 0; c < 128; ++c) {
-        const int gx = (c % kAtlasCols) * kGlyphPx;
-        const int gy = (c / kAtlasCols) * kGlyphPx;
-        for (int row = 0; row < kGlyphPx; ++row) {
-            const unsigned char bits = kFont8x8[c][row];
+void SdlDisplay::Impl::blitCell(const Cell& c, int cx, int cy) {
+    const Uint32 bg = 0xFF000000u | (c.bg.b << 16) | (c.bg.g << 8) | c.bg.r;
+    const Uint32 fg = 0xFF000000u | (c.fg.b << 16) | (c.fg.g << 8) | c.fg.r;
+    const int px0 = cx * kCellPx;
+    const int py0 = cy * kCellPx;
+    const int scale = kCellPx / kGlyphPx;
+    const unsigned char* glyph = kFont8x8[static_cast<unsigned char>(c.ch)];
+    for (int row = 0; row < kGlyphPx; ++row) {
+        const unsigned char bits = glyph[row];
+        for (int sy = 0; sy < scale; ++sy) {
+            Uint32* dst = &pixels[(py0 + row * scale + sy) * texW + px0];
             for (int col = 0; col < kGlyphPx; ++col) {
-                px[(gy + row) * surfW + gx + col] =
-                    (bits >> col) & 1 ? 0xFFFFFFFFu : 0x00000000u;
+                const Uint32 px = ((bits >> col) & 1) != 0 ? fg : bg;
+                for (int sx = 0; sx < scale; ++sx) dst[sx] = px;
+                dst += scale;
             }
         }
     }
-
-    atlas = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_FreeSurface(surf);
-    if (atlas == nullptr) return false;
-    SDL_SetTextureBlendMode(atlas, SDL_BLENDMODE_BLEND);
-    return true;
 }
 
 SdlDisplay::SdlDisplay() : impl_(std::make_unique<Impl>()) {
@@ -71,7 +81,7 @@ SdlDisplay::SdlDisplay() : impl_(std::make_unique<Impl>()) {
 }
 
 SdlDisplay::~SdlDisplay() {
-    if (impl_->atlas != nullptr) SDL_DestroyTexture(impl_->atlas);
+    if (impl_->frame != nullptr) SDL_DestroyTexture(impl_->frame);
     if (impl_->renderer != nullptr) SDL_DestroyRenderer(impl_->renderer);
     if (impl_->window != nullptr) SDL_DestroyWindow(impl_->window);
     SDL_Quit();
@@ -136,27 +146,17 @@ void SdlDisplay::pollInput(Input& input) {
 }
 
 void SdlDisplay::present(const CharGrid& grid) {
-    SDL_SetRenderDrawColor(impl_->renderer, 0, 0, 0, 255);
-    SDL_RenderClear(impl_->renderer);
-
+    if (!impl_->ensureTexture(grid.width(), grid.height())) return;
     for (int y = 0; y < grid.height(); ++y) {
         for (int x = 0; x < grid.width(); ++x) {
-            const Cell& c = grid.at(x, y);
-            const SDL_Rect dst{x * kCellPx, y * kCellPx, kCellPx, kCellPx};
-            if (c.bg.r != 0 || c.bg.g != 0 || c.bg.b != 0) {
-                SDL_SetRenderDrawColor(impl_->renderer, c.bg.r, c.bg.g, c.bg.b,
-                                       255);
-                SDL_RenderFillRect(impl_->renderer, &dst);
-            }
-            if (c.ch == ' ') continue;
-            const SDL_Rect src{(c.ch % kAtlasCols) * kGlyphPx,
-                               (c.ch / kAtlasCols) * kGlyphPx, kGlyphPx,
-                               kGlyphPx};
-            SDL_SetTextureColorMod(impl_->atlas, c.fg.r, c.fg.g, c.fg.b);
-            SDL_RenderCopy(impl_->renderer, impl_->atlas, &src, &dst);
+            impl_->blitCell(grid.at(x, y), x, y);
         }
     }
+    SDL_UpdateTexture(impl_->frame, nullptr, impl_->pixels.data(),
+                      impl_->texW * sizeof(Uint32));
+    SDL_RenderCopy(impl_->renderer, impl_->frame, nullptr, nullptr);
     SDL_RenderPresent(impl_->renderer);
+    impl_->lastBytes = static_cast<size_t>(impl_->texW) * impl_->texH * 4;
 }
 
 void SdlDisplay::toggleFullscreen() {

@@ -1,5 +1,5 @@
-#include "Player.h"
-#include "Map.h"
+#include "game/Player.h"
+#include "game/Map.h"
 #include <cmath>
 
 namespace {

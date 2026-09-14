@@ -1,4 +1,4 @@
-#include "Game.h"
+#include "game/Game.h"
 #include "render/Sprite.h"
 #include <algorithm>
 #include <chrono>

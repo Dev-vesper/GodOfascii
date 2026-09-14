@@ -1,4 +1,4 @@
-#include "Minimap.h"
+#include "ui/Minimap.h"
 #include "render/CharGrid.h"
 #include "core/Color.h"
 #include "game/Map.h"

@@ -1,8 +1,8 @@
 #pragma once
 #include "render/CharGrid.h"
-#include "Diagnostics.h"
-#include "Map.h"
-#include "Player.h"
+#include "game/Diagnostics.h"
+#include "game/Map.h"
+#include "game/Player.h"
 #include "render/Raycaster.h"
 #include "platform/Input.h"
 #include "platform/Display.h"

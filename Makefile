@@ -1,5 +1,5 @@
 CXX ?= c++
-CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Isrc
+CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Iinclude
 
 # The SDL window backend is auto-detected via sdl2-config. SDL=0 builds a
 # terminal-only binary that needs no SDL2 at all (FreeBSD base systems,

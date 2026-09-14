@@ -1,33 +1,35 @@
 #pragma once
 #include "core/Vec2.h"
+#include <cstdint>
 
 // One frame of input intent, backend neutral. The active display backend
 // fills it via reset() and the setters; the game only reads.
-enum class Action {
-    Quit,
-    ToggleMinimap,
-    ToggleFullscreen,
-    FovNarrow,
-    FovWiden,
+enum class Action : uint16_t {
+    Quit = 1u << 0,
+    ToggleMinimap = 1u << 1,
+    ToggleFullscreen = 1u << 2,
+    FovNarrow = 1u << 3,
+    FovWiden = 1u << 4,
+    MenuToggle = 1u << 5,
+    MenuUp = 1u << 6,
+    MenuDown = 1u << 7,
+    MenuLeft = 1u << 8,
+    MenuRight = 1u << 9,
+    MenuConfirm = 1u << 10,
 };
 
 class Input {
 public:
     // Clears all per-frame state. Backends call this before filling.
     void reset() {
-        quit_ = minimap_ = fullscreen_ = fovNarrow_ = fovWiden_ = false;
+        actions_ = 0;
         wish_ = {};
         mouseDx_ = mouseDy_ = 0;
     }
 
-    void setAction(Action action) {
-        switch (action) {
-            case Action::Quit: quit_ = true; break;
-            case Action::ToggleMinimap: minimap_ = true; break;
-            case Action::ToggleFullscreen: fullscreen_ = true; break;
-            case Action::FovNarrow: fovNarrow_ = true; break;
-            case Action::FovWiden: fovWiden_ = true; break;
-        }
+    void setAction(Action action) { actions_ |= static_cast<uint16_t>(action); }
+    bool triggered(Action action) const {
+        return (actions_ & static_cast<uint16_t>(action)) != 0;
     }
 
     void setWish(Vec2 wish) { wish_ = wish; }
@@ -36,28 +38,13 @@ public:
         mouseDy_ += dy;
     }
 
-    bool triggered(Action action) const {
-        switch (action) {
-            case Action::Quit: return quit_;
-            case Action::ToggleMinimap: return minimap_;
-            case Action::ToggleFullscreen: return fullscreen_;
-            case Action::FovNarrow: return fovNarrow_;
-            case Action::FovWiden: return fovWiden_;
-        }
-        return false;
-    }
-
     // Normalized movement intent in camera space: x = strafe, y = forward.
     Vec2 wish() const { return wish_; }
     int mouseDx() const { return mouseDx_; }
     int mouseDy() const { return mouseDy_; }
 
 private:
-    bool quit_ = false;
-    bool minimap_ = false;
-    bool fullscreen_ = false;
-    bool fovNarrow_ = false;
-    bool fovWiden_ = false;
+    uint16_t actions_ = 0;
     Vec2 wish_{};
     int mouseDx_ = 0;
     int mouseDy_ = 0;

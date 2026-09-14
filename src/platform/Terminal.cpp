@@ -303,7 +303,21 @@ struct Terminal::Impl {
     void key(char ch, Input& input);
     void sequence(const char* params, size_t n, char finalByte, Input& input);
     void applyHeld(Input& input);
+    void refreshHeld();
 };
+
+// Terminal keyboards report no key release, and typematic repeat fires for
+// the newest key only: the moment a second key is pressed, the stream of
+// repeats for the older one stops dead. Keys that were still alive at that
+// moment stay alive alongside the new one, so chords (walk + strafe, walk +
+// turn) keep working on consoles. Everything decays as before once the
+// keyboard goes quiet.
+void Terminal::Impl::refreshHeld() {
+    const auto now = Clock::now();
+    for (auto& entry : held) {
+        if (now - entry.second < kKeyFadeMs) entry.second = now;
+    }
+}
 
 void Terminal::Impl::key(char ch, Input& input) {
     const auto now = Clock::now();
@@ -321,6 +335,7 @@ void Terminal::Impl::key(char ch, Input& input) {
         case '\x03': input.setAction(Action::Quit); break;  // Ctrl+C
         default: break;
     }
+    refreshHeld();
 }
 
 void Terminal::Impl::sequence(const char* params, size_t n, char finalByte,
@@ -328,19 +343,23 @@ void Terminal::Impl::sequence(const char* params, size_t n, char finalByte,
     if (finalByte == 'A') {
         held['^'] = Clock::now();  // arrow up
         input.setAction(Action::MenuUp);
+        refreshHeld();
         return;
     }
     if (finalByte == 'B') {
         held['v'] = Clock::now();  // arrow down
         input.setAction(Action::MenuDown);
+        refreshHeld();
         return;
     }
     if (finalByte == 'C') {  // arrow right
         input.setAction(Action::MenuRight);
+        refreshHeld();
         return;
     }
     if (finalByte == 'D') {  // arrow left
         input.setAction(Action::MenuLeft);
+        refreshHeld();
         return;
     }
     if (finalByte != 'M' && finalByte != 'm') return;
@@ -465,6 +484,7 @@ void Terminal::pollInput(Input& input) {
             }
             if (i + 1 >= len) {
                 input.setAction(Action::MenuToggle);  // lone escape byte
+                impl_->refreshHeld();
                 ++i;
                 continue;
             }

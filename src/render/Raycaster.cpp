@@ -1,5 +1,6 @@
 #include "render/Raycaster.h"
 #include "render/CharGrid.h"
+#include "render/Fog.h"
 #include "core/Color.h"
 #include "game/Map.h"
 #include "game/Player.h"
@@ -8,8 +9,6 @@
 #include <vector>
 
 namespace {
-constexpr float kFogDensity = 0.075f;
-constexpr Rgb kFogColor{16, 20, 30};
 constexpr Rgb kFloorA{56, 50, 42};
 constexpr Rgb kFloorB{64, 58, 48};
 constexpr Rgb kCeilA{24, 28, 44};
@@ -172,7 +171,7 @@ void Raycaster::render(CharGrid& grid, const Map& map, const Player& player,
         const WallTex& tex = texFor(tile);
         const Rgb base = map.def(tile).color;
         const float sideShade = side == 1 ? 0.72f : 1.0f;
-        const float fog = 1.0f - std::exp(-dist * kFogDensity);
+        const float fog = fogFactor(dist);
 
         for (int y = y0; y <= y1; ++y) {
             int texY = (y - (horizon - lineH / 2)) * 8 / std::max(1, lineH);
@@ -195,7 +194,7 @@ void Raycaster::render(CharGrid& grid, const Map& map, const Player& player,
         const int p = isFloor ? y - horizon : horizon - y;
         if (p == 0) continue;
         const float rowDist = (0.5f * h) / p;
-        const float fog = 1.0f - std::exp(-rowDist * kFogDensity);
+        const float fog = fogFactor(rowDist);
 
         float fx = player.pos.x + rowDist * rayDir0.x;
         float fy = player.pos.y + rowDist * rayDir0.y;

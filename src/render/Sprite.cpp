@@ -1,5 +1,6 @@
 #include "render/Sprite.h"
 #include "render/CharGrid.h"
+#include "render/Fog.h"
 #include "core/Color.h"
 #include "game/Map.h"
 #include "game/Player.h"
@@ -18,8 +19,6 @@ const char* kCrystalArt[7] = {
 };
 
 constexpr float kCrystalSize = 0.7f;  // world height in tiles
-constexpr float kFogDensity = 0.075f;
-constexpr Rgb kFogColor{16, 20, 30};
 
 Rgb crystalColor(char ch, float fog) {
     Rgb base{120, 220, 255};
@@ -41,7 +40,7 @@ void Sprite::drawCrystals(CharGrid& grid, const Map& map, const Player& player,
     for (const Vec2& sprite : map.crystals()) {
         const Vec2 rel = sprite - player.pos;
         const float transY = invDet * (-plane.y * rel.x + plane.x * rel.y);
-        const float fog = 1.0f - std::exp(-transY * kFogDensity);
+        const float fog = fogFactor(transY);
         if (transY < 0.15f) continue;  // behind the camera
         if (fog > 0.97f) continue;     // fully swallowed by fog
         const float transX = invDet * (dir.y * rel.x - dir.x * rel.y);

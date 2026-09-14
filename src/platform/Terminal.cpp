@@ -38,6 +38,11 @@ void writeAll(const char* s, size_t n) {
     std::fflush(stdout);
 }
 
+// Mouse pixels the turn keys inject per frame. Terminals without mouse
+// reporting (the FreeBSD vt console, dumb terminals) need a keyboard way
+// to look around.
+constexpr int kTurnPx = 9;
+
 enum class ColorDepth { True, C256 };
 
 // Truecolor terminals announce themselves via COLORTERM. Anything else --
@@ -104,6 +109,7 @@ void Terminal::Impl::keyEvent(const KEY_EVENT_RECORD& rec, Input& input) {
     const bool down = rec.bKeyDown != FALSE;
     switch (vk) {
         case 'W': case 'A': case 'S': case 'D':
+        case 'Q': case 'E':
             if (down) {
                 held.insert(vk);
             } else {
@@ -250,6 +256,10 @@ void Terminal::pollInput(Input& input) {
         }
     }
     impl_->buildWish(input);
+    // Turn keys: a keyboard way to look around where mouse reporting is
+    // unavailable.
+    if (impl_->held.count('Q') != 0) input.addMouse(-kTurnPx, 0);
+    if (impl_->held.count('E') != 0) input.addMouse(kTurnPx, 0);
 }
 
 #else  // POSIX: Linux, FreeBSD and friends
@@ -302,6 +312,8 @@ void Terminal::Impl::key(char ch, Input& input) {
         case 's': case 'S': held['s'] = now; break;
         case 'a': case 'A': held['a'] = now; break;
         case 'd': case 'D': held['d'] = now; break;
+        case 'q': case 'Q': held['q'] = now; break;
+        case 'e': case 'E': held['e'] = now; break;
         case '\t': input.setAction(Action::ToggleMinimap); break;
         case '[': input.setAction(Action::FovNarrow); break;
         case ']': input.setAction(Action::FovWiden); break;
@@ -362,6 +374,7 @@ void Terminal::Impl::sequence(const char* params, size_t n, char finalByte,
 void Terminal::Impl::applyHeld(Input& input) {
     const auto now = Clock::now();
     Vec2 wish{};
+    float turn = 0.0f;  // synthetic mouse pixels from the turn keys
     for (auto it = held.begin(); it != held.end();) {
         const auto age =
             std::chrono::duration_cast<std::chrono::milliseconds>(now -
@@ -378,11 +391,14 @@ void Terminal::Impl::applyHeld(Input& input) {
             case 's': case 'v': wish.y -= w; break;
             case 'd': wish.x += w; break;
             case 'a': wish.x -= w; break;
+            case 'q': turn -= w; break;
+            case 'e': turn += w; break;
             default: break;
         }
         ++it;
     }
     if (length(wish) > 1e-3f) input.setWish(normalized(wish));
+    if (turn != 0.0f) input.addMouse(static_cast<int>(turn * kTurnPx), 0);
 }
 
 Terminal::Terminal(bool allowNonTty) : impl_(std::make_unique<Impl>()) {

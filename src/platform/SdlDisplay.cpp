@@ -3,6 +3,7 @@
 #include "platform/Input.h"
 #include "render/CharGrid.h"
 #include <SDL.h>
+#include <utility>
 
 namespace {
 constexpr int kGlyphPx = 8;   // font glyph size
@@ -22,6 +23,7 @@ struct SdlDisplay::Impl {
     bool init();
     bool ensureTexture(int gridW, int gridH);
     void blitCell(const Cell& c, int cx, int cy);
+    std::pair<int, int> outputSize() const;
 };
 
 bool SdlDisplay::Impl::init() {
@@ -77,6 +79,13 @@ void SdlDisplay::Impl::blitCell(const Cell& c, int cx, int cy) {
     }
 }
 
+std::pair<int, int> SdlDisplay::Impl::outputSize() const {
+    int w = 0;
+    int h = 0;
+    SDL_GetRendererOutputSize(renderer, &w, &h);
+    return {w, h};
+}
+
 SdlDisplay::SdlDisplay() : impl_(std::make_unique<Impl>()) {
     impl_->ok = impl_->init();
 }
@@ -90,19 +99,9 @@ SdlDisplay::~SdlDisplay() {
 
 bool SdlDisplay::ok() const { return impl_->ok; }
 
-int SdlDisplay::cols() const {
-    int w = 0;
-    int h = 0;
-    SDL_GetRendererOutputSize(impl_->renderer, &w, &h);
-    return w / kCellPx;
-}
+int SdlDisplay::cols() const { return impl_->outputSize().first / kCellPx; }
 
-int SdlDisplay::rows() const {
-    int w = 0;
-    int h = 0;
-    SDL_GetRendererOutputSize(impl_->renderer, &w, &h);
-    return h / kCellPx;
-}
+int SdlDisplay::rows() const { return impl_->outputSize().second / kCellPx; }
 
 void SdlDisplay::pollInput(Input& input) {
     input.reset();

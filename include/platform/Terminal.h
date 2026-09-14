@@ -2,9 +2,12 @@
 #include "platform/Display.h"
 #include <memory>
 
-// ANSI terminal backend: renders truecolor escape sequences directly to the
-// tty and reads keyboard plus SGR mouse motion. Used when no graphical
-// session exists (SSH, headless machines) -- no external library required.
+// ANSI terminal backend: renders escape sequences directly to the tty and
+// reads keyboard plus SGR mouse motion. Output is truecolor when COLORTERM
+// says the terminal supports it, otherwise the xterm-256 palette
+// (ASCII3D_COLOR=truecolor|256 overrides). Used when no graphical session
+// exists (SSH, headless machines, the FreeBSD console) -- no external
+// library required.
 class Terminal : public Display {
 public:
     // allowNonTty skips the is-a-terminal check so the backend can be forced

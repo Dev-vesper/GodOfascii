@@ -1,7 +1,9 @@
 #include "platform/Terminal.h"
 #include "platform/Input.h"
 #include "render/CharGrid.h"
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -34,6 +36,40 @@ constexpr char kRestore[] =
 void writeAll(const char* s, size_t n) {
     std::fwrite(s, 1, n, stdout);
     std::fflush(stdout);
+}
+
+enum class ColorDepth { True, C256 };
+
+// Truecolor terminals announce themselves via COLORTERM. Anything else --
+// the FreeBSD vt console among them -- parses 38;2/48;2 as separate codes
+// and renders garbage colors, so those get the xterm-256 palette instead.
+ColorDepth colorDepth() {
+    const char* forced = std::getenv("ASCII3D_COLOR");
+    if (forced != nullptr) {
+        return std::strcmp(forced, "truecolor") == 0 ? ColorDepth::True
+                                                     : ColorDepth::C256;
+    }
+    const char* ct = std::getenv("COLORTERM");
+    if (ct == nullptr) return ColorDepth::C256;
+    return std::strstr(ct, "truecolor") != nullptr ||
+                   std::strstr(ct, "24bit") != nullptr
+               ? ColorDepth::True
+               : ColorDepth::C256;
+}
+
+// Nearest xterm-256 palette entry: the 6x6x6 color cube plus a gray ramp.
+int quantize256(Rgb c) {
+    const int mn = std::min({c.r, c.g, c.b});
+    const int mx = std::max({c.r, c.g, c.b});
+    if (mx - mn < 16) {  // near-gray: the 24-step ramp is the better fit
+        return 232 + std::clamp((c.r + c.g + c.b) / 30, 0, 23);
+    }
+    const auto cube = [](int v) {
+        if (v < 48) return 0;
+        if (v < 115) return 1;
+        return std::min(5, (v - 35) / 40);
+    };
+    return 16 + 36 * cube(c.r) + 6 * cube(c.g) + cube(c.b);
 }
 
 }  // namespace
@@ -446,13 +482,36 @@ void Terminal::present(const CharGrid& grid) {
     // instead of tearing through it. Unknown sequences are ignored elsewhere.
     out += "\x1b[?2026h";
 
+    const ColorDepth depth = colorDepth();
     bool haveFg = false;
     bool haveBg = false;
     Rgb curFg{};
     Rgb curBg{};
+    int curFgIdx = -1;
+    int curBgIdx = -1;
     // Appends one cell, emitting only the SGR codes the pen does not
     // already carry. The pen state survives cursor moves.
     const auto emitCell = [&](const Cell& c) {
+        if (depth == ColorDepth::C256) {
+            const int bg = quantize256(c.bg);
+            if (bg != curBgIdx) {
+                out += "\x1b[48;5;";
+                out += std::to_string(bg);
+                out += 'm';
+                curBgIdx = bg;
+            }
+            if (c.ch != ' ') {
+                const int fg = quantize256(c.fg);
+                if (fg != curFgIdx) {
+                    out += "\x1b[38;5;";
+                    out += std::to_string(fg);
+                    out += 'm';
+                    curFgIdx = fg;
+                }
+            }
+            out += c.ch;
+            return;
+        }
         if (!haveBg || c.bg != curBg) {
             out += "\x1b[48;2;";
             out += std::to_string(c.bg.r);

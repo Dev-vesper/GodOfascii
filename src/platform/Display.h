@@ -20,6 +20,8 @@ public:
     // snapshot first, then fill it with events observed since the last call.
     virtual void pollInput(Input& input) = 0;
     virtual void toggleFullscreen() {}
+    // Bytes the most recent present() shipped to the display, for debugging.
+    virtual size_t lastFrameBytes() const { return 0; }
 
     // Selects a backend at runtime: the SDL window when a graphical session
     // is available, otherwise the terminal. ASCII3D_BACKEND=terminal or =sdl

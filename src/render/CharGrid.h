@@ -8,6 +8,11 @@ struct Cell {
     char ch = ' ';
     Rgb fg{220, 220, 220};
     Rgb bg{0, 0, 0};
+
+    bool operator==(const Cell& o) const {
+        return ch == o.ch && fg == o.fg && bg == o.bg;
+    }
+    bool operator!=(const Cell& o) const { return !(*this == o); }
 };
 
 // One frame of truecolor character cells, independent of any backend.

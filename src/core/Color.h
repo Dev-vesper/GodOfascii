@@ -5,6 +5,11 @@ struct Rgb {
     uint8_t r = 0;
     uint8_t g = 0;
     uint8_t b = 0;
+
+    constexpr bool operator==(const Rgb& o) const {
+        return r == o.r && g == o.g && b == o.b;
+    }
+    constexpr bool operator!=(const Rgb& o) const { return !(*this == o); }
 };
 
 constexpr float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }

@@ -52,6 +52,13 @@ struct Terminal::Impl {
     int lastMx = 0;
     int lastMy = 0;
 
+    // Damage tracking for present(): what the terminal currently shows.
+    std::vector<Cell> prev;
+    int prevW = 0;
+    int prevH = 0;
+    bool havePrev = false;
+    size_t lastBytes = 0;
+
     void keyEvent(const KEY_EVENT_RECORD& rec, Input& input);
     void buildWish(Input& input);
 };
@@ -215,6 +222,13 @@ struct Terminal::Impl {
     bool haveMouse = false;
     int lastMx = 0;
     int lastMy = 0;
+
+    // Damage tracking for present(): what the terminal currently shows.
+    std::vector<Cell> prev;
+    int prevW = 0;
+    int prevH = 0;
+    bool havePrev = false;
+    size_t lastBytes = 0;
 
     void key(char ch, Input& input);
     void sequence(const char* params, size_t n, char finalByte, Input& input);
@@ -386,49 +400,105 @@ void Terminal::pollInput(Input& input) {
 #endif  // _WIN32
 
 void Terminal::present(const CharGrid& grid) {
+    const int w = grid.width();
+    const int h = grid.height();
+    const bool full = !impl_->havePrev || impl_->prevW != w ||
+                      impl_->prevH != h;
+    if (full) impl_->prev.assign(static_cast<size_t>(w) * h, Cell{});
     std::string out;
-    out.reserve(static_cast<size_t>(grid.width()) * grid.height() * 6 + 32);
+    out.reserve(static_cast<size_t>(w) * h * 6 + 32);
+    // Synchronized update: supporting terminals present the frame atomically
+    // instead of tearing through it. Unknown sequences are ignored elsewhere.
+    out += "\x1b[?2026h";
+
     bool haveFg = false;
     bool haveBg = false;
     Rgb curFg{};
     Rgb curBg{};
-    for (int y = 0; y < grid.height(); ++y) {
-        // Absolute row positioning: autowrap is disabled, so the cursor
-        // never moves to the next line on its own.
-        out += "\x1b[";
-        out += std::to_string(y + 1);
-        out += ";1H";
-        out += "\x1b[K";  // wipe what a wider previous frame left behind
-        for (int x = 0; x < grid.width(); ++x) {
-            const Cell& c = grid.at(x, y);
-            if (!haveBg || c.bg.r != curBg.r || c.bg.g != curBg.g ||
-                c.bg.b != curBg.b) {
-                out += "\x1b[48;2;";
-                out += std::to_string(c.bg.r);
-                out += ';';
-                out += std::to_string(c.bg.g);
-                out += ';';
-                out += std::to_string(c.bg.b);
-                out += 'm';
-                curBg = c.bg;
-                haveBg = true;
+    // Appends one cell, emitting only the SGR codes the pen does not
+    // already carry. The pen state survives cursor moves.
+    const auto emitCell = [&](const Cell& c) {
+        if (!haveBg || c.bg != curBg) {
+            out += "\x1b[48;2;";
+            out += std::to_string(c.bg.r);
+            out += ';';
+            out += std::to_string(c.bg.g);
+            out += ';';
+            out += std::to_string(c.bg.b);
+            out += 'm';
+            curBg = c.bg;
+            haveBg = true;
+        }
+        if (c.ch != ' ' && (!haveFg || c.fg != curFg)) {
+            out += "\x1b[38;2;";
+            out += std::to_string(c.fg.r);
+            out += ';';
+            out += std::to_string(c.fg.g);
+            out += ';';
+            out += std::to_string(c.fg.b);
+            out += 'm';
+            curFg = c.fg;
+            haveFg = true;
+        }
+        out += c.ch;
+    };
+
+    for (int y = 0; y < h; ++y) {
+        if (full) {
+            // Absolute row positioning: autowrap is disabled, so the cursor
+            // never moves to the next line on its own.
+            out += "\x1b[";
+            out += std::to_string(y + 1);
+            out += ";1H";
+            out += "\x1b[K";  // wipe what a wider previous frame left behind
+            for (int x = 0; x < w; ++x) {
+                emitCell(grid.at(x, y));
+                impl_->prev[y * w + x] = grid.at(x, y);
             }
-            if (c.ch != ' ' &&
-                (!haveFg || c.fg.r != curFg.r || c.fg.g != curFg.g ||
-                 c.fg.b != curFg.b)) {
-                out += "\x1b[38;2;";
-                out += std::to_string(c.fg.r);
-                out += ';';
-                out += std::to_string(c.fg.g);
-                out += ';';
-                out += std::to_string(c.fg.b);
-                out += 'm';
-                curFg = c.fg;
-                haveFg = true;
+            continue;
+        }
+
+        // Damaged-cell path: emit runs of changed cells only. A single
+        // unchanged cell between two changed ones is re-emitted (cheaper
+        // than a new cursor move); a gap of two or more closes the run.
+        const Cell* row = &grid.at(0, y);
+        Cell* prevRow = &impl_->prev[y * w];
+        int x = 0;
+        while (x < w) {
+            if (row[x] == prevRow[x]) {
+                ++x;
+                continue;
             }
-            out += c.ch;
+            int end = x;
+            while (end < w) {
+                if (row[end] != prevRow[end]) {
+                    ++end;
+                    continue;
+                }
+                if (end + 1 < w && row[end + 1] != prevRow[end + 1]) {
+                    end += 2;  // bridge a one-cell gap by re-emitting it
+                    continue;
+                }
+                break;
+            }
+            out += "\x1b[";
+            out += std::to_string(y + 1);
+            out += ';';
+            out += std::to_string(x + 1);
+            out += 'H';
+            for (int i = x; i < end; ++i) {
+                emitCell(row[i]);
+                prevRow[i] = row[i];
+            }
+            x = end;
         }
     }
-    out += "\x1b[0m";
+    out += "\x1b[0m\x1b[?2026l";
     writeAll(out.data(), out.size());
+    impl_->prevW = w;
+    impl_->prevH = h;
+    impl_->havePrev = true;
+    impl_->lastBytes = out.size();
 }
+
+size_t Terminal::lastFrameBytes() const { return impl_->lastBytes; }

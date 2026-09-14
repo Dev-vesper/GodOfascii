@@ -19,6 +19,8 @@ public:
     int rows() const override;
     void present(const CharGrid& grid) override;
     void pollInput(Input& input) override;
+    // Bytes written by the most recent present() -- for the debug overlay.
+    size_t lastFrameBytes() const override;
 
 private:
     struct Impl;

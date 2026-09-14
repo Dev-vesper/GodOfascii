@@ -1,5 +1,6 @@
 #pragma once
 #include "render/CharGrid.h"
+#include "Diagnostics.h"
 #include "Map.h"
 #include "Player.h"
 #include "render/Raycaster.h"
@@ -15,6 +16,7 @@
 class Game {
 public:
     explicit Game(const std::string& mapPath);
+    ~Game();
     int run();
 
 private:
@@ -33,6 +35,8 @@ private:
     Hud hud_;
     CharGrid grid_;
     std::vector<float> depthBuffer_;
+    Diagnostics diag_;
+    bool debug_ = false;
     bool showMinimap_ = true;
     bool running_ = true;
     float fps_ = 0.0f;

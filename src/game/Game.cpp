@@ -2,6 +2,8 @@
 #include "render/Sprite.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <thread>
 
@@ -14,6 +16,14 @@ constexpr float kMaxFov = 110.0f;
 Game::Game(const std::string& mapPath) {
     map_.load(mapPath);
     display_ = Display::create();
+    debug_ = Diagnostics::enabled();
+}
+
+Game::~Game() {
+    if (!debug_) return;
+    const char* path = std::getenv("ASCII3D_STATS");
+    diag_.writeSummary(path != nullptr && path[0] != '\0' ? path
+                                                         : "/tmp/ascii3d-stats.txt");
 }
 
 void Game::pollInput() {
@@ -59,7 +69,6 @@ void Game::render() {
     if (showMinimap_) minimap_.render(grid_, map_, player_);
 
     hud_.draw(grid_, player_, fps_);
-    display_->present(grid_);
 }
 
 int Game::run() {
@@ -85,10 +94,27 @@ int Game::run() {
 
         grid_.resize(display_->cols(), std::max(3, display_->rows() - 1));
         grid_.clear();
-        update(dt);
-        render();
 
-        const auto spent = Clock::now() - frameStart;
+        auto t0 = Clock::now();
+        update(dt);
+        auto t1 = Clock::now();
+        render();
+        auto t2 = Clock::now();
+        if (debug_) {
+            diag_.drawOverlay(grid_, static_cast<int>(std::lround(fps_)));
+        }
+        display_->present(grid_);
+        const auto frameEnd = Clock::now();
+
+        if (debug_) {
+            using ms = std::chrono::duration<float, std::milli>;
+            diag_.recordFrame(dt * 1000.0f);  // true period incl. pacing
+            diag_.recordUpdate(ms(t1 - t0).count());
+            diag_.recordRender(ms(t2 - t1).count());
+            diag_.recordPresent(ms(frameEnd - t2).count(),
+                                display_->lastFrameBytes());
+        }
+        const auto spent = frameEnd - frameStart;
         if (spent < kFrameBudget) {
             std::this_thread::sleep_for(kFrameBudget - spent);
         }

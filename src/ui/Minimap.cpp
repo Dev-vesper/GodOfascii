@@ -18,10 +18,6 @@ void Minimap::render(CharGrid& grid, const Map& map, const Player& player) const
             grid.set(ox + x, oy + y, def.mapChar, fg, {0, 0, 0});
         }
     }
-    for (const Vec2& c : map.crystals()) {
-        grid.set(ox + static_cast<int>(c.x), oy + static_cast<int>(c.y), '*',
-                 {90, 210, 240}, {0, 0, 0});
-    }
 
     const int px = static_cast<int>(player.pos.x);
     const int py = static_cast<int>(player.pos.y);

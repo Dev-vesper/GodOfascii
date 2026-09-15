@@ -1,14 +1,14 @@
 #pragma once
-#include "core/Vec2.h"
+#include "net/NetClient.h"
 #include <vector>
 
 class CharGrid;
-class Map;
 class Player;
 
-// Billboard sprite pass: draws crystal entities into the grid, occluded by
+// Billboard sprite pass: draws the other players into the grid, occluded by
 // walls using the per-column depth buffer produced by the raycaster.
 namespace Sprite {
-void drawCrystals(CharGrid& grid, const Map& map, const Player& player,
-                  const std::vector<float>& depthBuffer, int horizon);
+void drawPlayers(CharGrid& grid, const std::vector<RemotePlayer>& players,
+                 const Player& viewer, const std::vector<float>& depthBuffer,
+                 int horizon);
 }

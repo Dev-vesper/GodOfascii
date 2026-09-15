@@ -14,7 +14,6 @@ struct TileDef {
 
 // Tile map loaded from a plain text file. Each character is one tile;
 // out-of-bounds tiles are a solid border, so the world is always closed.
-// '*' marks a crystal sprite entity on a walkable tile.
 class Map {
 public:
     bool load(const std::string& path);
@@ -32,8 +31,6 @@ public:
     float spawnY() const { return spawnY_; }
     float spawnAngle() const { return spawnAngle_; }
 
-    const std::vector<Vec2>& crystals() const { return crystals_; }
-
 private:
     static const TileDef kTiles[];
     static uint8_t tileFromChar(char ch);
@@ -41,7 +38,6 @@ private:
     int width_ = 0;
     int height_ = 0;
     std::vector<uint8_t> tiles_;
-    std::vector<Vec2> crystals_;
     float spawnX_ = 1.5f;
     float spawnY_ = 1.5f;
     float spawnAngle_ = 0.0f;

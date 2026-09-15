@@ -1,5 +1,5 @@
 #pragma once
-#include <cstdint>
+#include "ui/MenuDefs.h"
 
 class CharGrid;
 
@@ -9,26 +9,16 @@ class CharGrid;
 // game state stays with its owner.
 class Menu {
 public:
-    enum class Command {
-        None,
-        Resume,  // close the menu
-        Exit,    // quit the game
-        FovDown,
-        FovUp,
-        ToggleMinimap,
-        ToggleFullscreen,
-    };
-    enum class Event { Up, Down, Left, Right, Confirm, Back };
-
     bool active() const { return active_; }
     void setActive(bool on);
 
-    // Applies a navigation event and returns the command it produced.
-    Command handle(Event ev);
+    // Applies a navigation event (an optional typed character is accepted
+    // for symmetry; this menu has no text entry) and returns the command
+    // it produced.
+    MenuCommand handle(MenuEvent ev, char typed = 0);
 
-    // Blends the panel over the rendered frame; scene glyphs stay visible
-    // through cells the panel does not use. No-op when inactive. fov,
-    // minimapOn and fullscreenOn are display values for the settings page.
+    // Blends the panel over the rendered frame. fov, minimapOn and
+    // fullscreenOn are display values for the settings page.
     void draw(CharGrid& grid, int fov, bool minimapOn, bool fullscreenOn) const;
 
 private:

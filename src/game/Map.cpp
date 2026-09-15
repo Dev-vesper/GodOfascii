@@ -16,7 +16,7 @@ uint8_t Map::tileFromChar(char ch) {
         case '%': return 3;
         case '=': return 4;
         case 'T': return 5;
-        default: return 0;  // '.', ' ', '*', '@' are walkable
+        default: return 0;  // '.', ' ', '*' (retired crystal marks) walkable
     }
 }
 
@@ -54,10 +54,6 @@ bool Map::load(const std::string& path) {
                 spawnY_ = y + 0.5f;
                 spawnAngle_ = 0.0f;  // face east
                 spawnFound = true;
-                ch = ' ';
-            }
-            if (ch == '*') {
-                crystals_.push_back({x + 0.5f, y + 0.5f});
                 ch = ' ';
             }
             tiles_[static_cast<size_t>(y) * width_ + x] = tileFromChar(ch);

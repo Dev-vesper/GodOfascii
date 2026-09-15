@@ -5,13 +5,15 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 namespace {
 constexpr Rgb kHudFg{235, 235, 235};
 constexpr Rgb kHudBg{24, 26, 34};
 }  // namespace
 
-void Hud::draw(CharGrid& grid, const Player& player, float fps) const {
+void Hud::draw(CharGrid& grid, const Player& player, float fps,
+               int onlinePlayers) const {
     // Crosshair at screen center.
     const int cx = grid.width() / 2;
     const int cy = grid.height() / 2;
@@ -22,11 +24,13 @@ void Hud::draw(CharGrid& grid, const Player& player, float fps) const {
     grid.setText(1, y,
                  "WASD move | QE or mouse turn | Tab map | [ ] fov | F11 full | Esc menu",
                  kHudFg, kHudBg);
-    char buf[72];
-    std::snprintf(buf, sizeof buf, "FPS %d | FOV %d | %dx%d",
+    char buf[80];
+    const std::string online =
+        onlinePlayers > 0 ? " | online " + std::to_string(onlinePlayers) : "";
+    std::snprintf(buf, sizeof buf, "FPS %d | FOV %d | %dx%d%s",
                   static_cast<int>(std::lround(fps)),
                   static_cast<int>(std::lround(player.fov)), grid.width(),
-                  grid.height());
+                  grid.height(), online.c_str());
     const int x =
         std::max(1, grid.width() - static_cast<int>(std::strlen(buf)) - 1);
     grid.setText(x, y, buf, kHudFg, kHudBg);

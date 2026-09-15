@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <string>
 #include <unordered_map>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -20,6 +21,9 @@ struct Session {
     float x = 0.0f;
     float y = 0.0f;
     float angle = 0.0f;
+    // Sessions that never reported a position (the host dashboard's
+    // observer) stay invisible to players.
+    bool hasState = false;
     std::vector<uint8_t> inBuf;
 };
 
@@ -100,6 +104,20 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "error: cannot listen on port %u\n", port);
         return 1;
     }
+    // Optional readiness pipe (--ready-fd=N): one byte once the port is
+    // bound, EOF on failure. Lets a parent tell "our server is up" apart
+    // from "someone else owns that port".
+    for (int i = 1; i < argc; ++i) {
+        const char* r = std::strstr(argv[i], "--ready-fd=");
+        if (r == nullptr) continue;
+        const int fd = std::atoi(r + 11);
+        if (fd < 0) break;
+        const char byte = 'r';
+        ssize_t ignored = write(fd, &byte, 1);
+        (void)ignored;
+        close(fd);
+        break;
+    }
     std::printf("ascii3d-server listening on %u (Ctrl+C to stop)\n", port);
     std::fflush(stdout);
 
@@ -141,6 +159,7 @@ int main(int argc, char** argv) {
                         self.x = x;
                         self.y = y;
                         self.angle = a;
+                        self.hasState = true;
                     }
                 });
             }
@@ -171,12 +190,14 @@ int main(int argc, char** argv) {
             }
         }
 
-        // Broadcast the world snapshot to everyone.
+        // Broadcast the world snapshot to everyone (only positioned
+        // sessions appear in it).
         std::vector<uint32_t> ids;
         std::vector<float> pos;
         ids.reserve(sessions.size());
         pos.reserve(sessions.size() * 3);
         for (const auto& e : sessions) {
+            if (!e.second.hasState) continue;
             ids.push_back(e.second.id);
             pos.push_back(e.second.x);
             pos.push_back(e.second.y);

@@ -1,6 +1,7 @@
 #pragma once
 #include "core/Vec2.h"
 #include <cstdint>
+#include <string>
 
 // One frame of input intent, backend neutral. The active display backend
 // fills it via reset() and the setters; the game only reads.
@@ -25,6 +26,7 @@ public:
         actions_ = 0;
         wish_ = {};
         mouseDx_ = mouseDy_ = 0;
+        typed_.clear();
     }
 
     void setAction(Action action) { actions_ |= static_cast<uint16_t>(action); }
@@ -37,6 +39,18 @@ public:
         mouseDx_ += dx;
         mouseDy_ += dy;
     }
+    // Text entry queue for menus: printable bytes plus '\b' backspaces,
+    // capped so a pasted burst cannot grow without bound. Backends push
+    // every byte they saw this frame; menus drain them with popTyped().
+    void typeChar(char c) {
+        if (typed_.size() < 32) typed_ += c;
+    }
+    char popTyped() {
+        if (typed_.empty()) return 0;
+        const char c = typed_.front();
+        typed_.erase(typed_.begin());
+        return c;
+    }
 
     // Normalized movement intent in camera space: x = strafe, y = forward.
     Vec2 wish() const { return wish_; }
@@ -48,4 +62,5 @@ private:
     Vec2 wish_{};
     int mouseDx_ = 0;
     int mouseDy_ = 0;
+    std::string typed_;
 };

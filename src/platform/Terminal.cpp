@@ -107,6 +107,15 @@ struct Terminal::Impl {
 void Terminal::Impl::keyEvent(const KEY_EVENT_RECORD& rec, Input& input) {
     const int vk = static_cast<int>(rec.wVirtualKeyCode);
     const bool down = rec.bKeyDown != FALSE;
+    // Text entry feed for menus: every printable byte plus backspace.
+    const char ascii = static_cast<char>(rec.uChar.AsciiChar);
+    if (down) {
+        if (ascii == '\b') {
+            input.typeChar('\b');
+        } else if (ascii >= 0x20 && ascii < 0x7f) {
+            input.typeChar(ascii);
+        }
+    }
     switch (vk) {
         case 'W': case 'A': case 'S': case 'D':
         case 'Q': case 'E':
@@ -369,6 +378,12 @@ void Terminal::Impl::chordPress(char ch) {
 }
 
 void Terminal::Impl::key(char ch, Input& input) {
+    // Text entry feed for menus: every printable byte plus backspace.
+    if (ch == '\b' || ch == 0x7f) {
+        input.typeChar('\b');
+    } else if (ch >= 0x20 && ch < 0x7f) {
+        input.typeChar(ch);
+    }
     if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
     switch (ch) {
         case 'w': case 's': case 'a': case 'd': case 'q': case 'e':

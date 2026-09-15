@@ -133,7 +133,17 @@ void SdlDisplay::pollInput(Input& input) {
                     case SDLK_KP_ENTER:
                         input.setAction(Action::MenuConfirm);
                         break;
-                    default: break;
+                    default:
+                        // Text entry feed for menus: printable keysym plus
+                        // backspace (SDL keycodes are ASCII there).
+                        if (event.key.keysym.sym == SDLK_BACKSPACE) {
+                            input.typeChar('\b');
+                        } else if (event.key.keysym.sym >= 0x20 &&
+                                   event.key.keysym.sym < 0x7f) {
+                            input.typeChar(
+                                static_cast<char>(event.key.keysym.sym));
+                        }
+                        break;
                 }
                 break;
             default: break;

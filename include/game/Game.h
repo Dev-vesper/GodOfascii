@@ -41,14 +41,23 @@ private:
     // Connects to host:port, retrying a few times so a freshly spawned
     // server has time to bind. Applies the server spawn on success.
     bool joinGame(const std::string& host, uint16_t port, int attempts);
-    // Spawns the sibling ascii3d-server binary and returns its success.
+    // Spawns the sibling ascii3d-server binary without joining it; the
+    // dashboard observer then watches who plays on it.
     bool hostGame(uint16_t port);
+    // Tears down a hosted server: observer disconnects, child is killed.
+    void stopHosting();
 
     Map map_;
     Player player_;
     std::unique_ptr<Display> display_;
     Input input_;
     std::unique_ptr<NetClient> net_;
+    // Host dashboard's silent eye on the server: connected but never
+    // sends a position, so players never see it.
+    std::unique_ptr<NetClient> observer_;
+    int hostPid_ = -1;            // hosted server process; -1 = none
+    int readyFd_ = -1;            // its readiness pipe; -1 = none
+    uint16_t hostPort_ = 7777;
     Raycaster raycaster_;
     Minimap minimap_;
     Hud hud_;

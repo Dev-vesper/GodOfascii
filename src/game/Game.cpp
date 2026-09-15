@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "net/Socket.h"
 #include "render/Sprite.h"
 #include <algorithm>
 #include <chrono>
@@ -8,7 +9,9 @@
 #include <thread>
 
 #ifndef _WIN32
+#include <csignal>
 #include <fcntl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #ifdef __FreeBSD__
 #include <sys/sysctl.h>
@@ -35,6 +38,22 @@ uint16_t portOf(const std::string& address) {
     return port > 0 && port <= 65535 ? static_cast<uint16_t>(port)
                                      : kDefaultPort;
 }
+
+// Waits for the server's readiness byte on fd (set non-blocking by the
+// caller). True = our server bound the port; false = it died (exec
+// failure, busy port) or the wait timed out.
+bool hostReady(int fd) {
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+        char b = 0;
+        const ssize_t n = read(fd, &b, 1);
+        if (n == 1) return true;
+        if (n == 0) return false;  // pipe closed: the child is gone
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    return false;
+}
 }  // namespace
 
 Game::Game(const std::string& mapPath) {
@@ -44,6 +63,7 @@ Game::Game(const std::string& mapPath) {
 }
 
 Game::~Game() {
+    stopHosting();  // never orphan a spawned server
     if (!debug_) return;
     const char* path = std::getenv("ASCII3D_STATS");
     diag_.writeSummary(path != nullptr && path[0] != '\0' ? path
@@ -105,15 +125,47 @@ void Game::applyMenuCommand(MenuCommand cmd) {
         case MenuCommand::Exit: running_ = false; break;
         case MenuCommand::StartOffline: startMenu_.setActive(false); break;
         case MenuCommand::HostGame: {
+            stopHosting();  // a previous host attempt must not leak its server
             const uint16_t port = portOf(startMenu_.address());
-            if (hostGame(port) && joinGame("127.0.0.1", port, 20)) {
-                startMenu_.setActive(false);
-            } else {
-                startMenu_.setStatus("cannot host on port " +
-                                     std::to_string(port));
+            if (!hostGame(port)) {
+                startMenu_.setStatus("cannot start the server");
+                break;
             }
+            // Only the readiness byte proves OUR server owns the port --
+            // without it another server could already live there and the
+            // observer would silently watch a stranger's world.
+            if (!hostReady(readyFd_)) {
+                stopHosting();
+                startMenu_.setStatus("port " + std::to_string(port) +
+                                     " is busy");
+                break;
+            }
+            // The dashboard watches through a silent observer: connected,
+            // but it never reports a position so players never see it.
+            auto obs = std::make_unique<NetClient>();
+            if (!obs->connect("127.0.0.1", port)) {
+                stopHosting();
+                startMenu_.setStatus("cannot watch the server");
+                break;
+            }
+            observer_ = std::move(obs);
+            hostPort_ = port;
+            startMenu_.setHosting(sock::localAddress() + ":" +
+                                  std::to_string(port));
+            startMenu_.setHostPlayers(0);
             break;
         }
+        case MenuCommand::StopHosting:
+            stopHosting();
+            break;
+        case MenuCommand::JoinHosted:
+            if (joinGame("127.0.0.1", hostPort_, 3)) {
+                observer_.reset();  // the play client takes over the session
+                startMenu_.setActive(false);
+            } else {
+                startMenu_.setStatus("cannot reach own server");
+            }
+            break;
         case MenuCommand::JoinGame: {
             const std::string host = hostOf(startMenu_.address());
             const uint16_t port = portOf(startMenu_.address());
@@ -178,11 +230,20 @@ bool Game::hostGame(uint16_t port) {
         slash == std::string::npos ? "ascii3d-server"
                                    : dir.substr(0, slash) + "/ascii3d-server";
 
+    // Readiness pipe: the server writes one byte once it bound the port,
+    // EOF if it died trying. Inherited across execv, closed by both sides.
+    int ready[2];
+    if (pipe(ready) != 0) return false;
     const pid_t pid = fork();
-    if (pid < 0) return false;
+    if (pid < 0) {
+        close(ready[0]);
+        close(ready[1]);
+        return false;
+    }
     if (pid == 0) {
         // Detach from the terminal: the game owns the tty, the server must
         // not scribble escape sequences into it.
+        close(ready[0]);
         setsid();
         const int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
@@ -192,14 +253,39 @@ bool Game::hostGame(uint16_t port) {
             if (devnull > STDERR_FILENO) close(devnull);
         }
         const std::string portArg = "--port=" + std::to_string(port);
+        const std::string readyArg =
+            "--ready-fd=" + std::to_string(ready[1]);
         std::vector<char*> argv;
         argv.push_back(const_cast<char*>("ascii3d-server"));
         argv.push_back(const_cast<char*>(portArg.c_str()));
+        argv.push_back(const_cast<char*>(readyArg.c_str()));
         argv.push_back(nullptr);
         execv(server.c_str(), argv.data());
         _exit(127);
     }
-    return true;  // the join retries tell us whether it actually came up
+    close(ready[1]);
+    const int flags = fcntl(ready[0], F_GETFL, 0);
+    fcntl(ready[0], F_SETFL, flags | O_NONBLOCK);
+    hostPid_ = static_cast<int>(pid);
+    readyFd_ = ready[0];
+    return true;
+#endif
+}
+
+void Game::stopHosting() {
+    observer_.reset();
+#ifndef _WIN32
+    if (readyFd_ >= 0) close(readyFd_);
+#endif
+    readyFd_ = -1;
+    if (hostPid_ < 0) return;
+#ifdef _WIN32
+    hostPid_ = -1;  // hosting spawned no child there
+#else
+    kill(hostPid_, SIGTERM);
+    int st = 0;
+    waitpid(hostPid_, &st, 0);
+    hostPid_ = -1;
 #endif
 }
 
@@ -284,6 +370,17 @@ int Game::run() {
         if (net_ && net_->connected()) {
             net_->sendState(player_.pos.x, player_.pos.y, player_.angle);
             net_->poll();  // drop or survive a dead server without blocking
+        }
+        if (observer_) {
+            if (observer_->connected()) {
+                // Live player count for the host dashboard.
+                observer_->poll();
+                startMenu_.setHostPlayers(
+                    static_cast<int>(observer_->others().size()));
+            } else {
+                observer_.reset();
+                startMenu_.setStatus("server stopped");
+            }
         }
         auto t1 = Clock::now();
         render();

@@ -29,14 +29,24 @@ ifneq ($(HAVE_SDL),)
 else
     SRC := $(filter-out src/platform/SdlDisplay.cpp,$(SRC))
 endif
-OBJ := $(SRC:src/%.cpp=build/%.o)
-DEP := $(OBJ:.o=.d)
+
+# The client runs the game; the server relays sessions and needs neither
+# rendering nor input, so it links only the net module.
+CLIENT_SRC := $(filter-out src/server/main.cpp,$(SRC))
+SERVER_SRC := src/server/main.cpp src/net/Protocol.cpp src/net/Socket.cpp
+CLIENT_OBJ := $(CLIENT_SRC:src/%.cpp=build/%.o)
+SERVER_OBJ := $(SERVER_SRC:src/%.cpp=build/%.o)
+DEP := $(CLIENT_OBJ:.o=.d) $(SERVER_OBJ:.o=.d)
 BIN := build/ascii3d
+SERVER_BIN := build/ascii3d-server
 
-all: $(BIN)
+all: $(BIN) $(SERVER_BIN)
 
-$(BIN): $(OBJ)
+$(BIN): $(CLIENT_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL_LIBS)
+
+$(SERVER_BIN): $(SERVER_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
 build/%.o: src/%.cpp | build
 	@mkdir -p $(dir $@)
@@ -48,9 +58,12 @@ build:
 run: $(BIN)
 	./$(BIN)
 
+server: $(SERVER_BIN)
+	./$(SERVER_BIN)
+
 clean:
 	rm -rf build
 
 -include $(DEP)
 
-.PHONY: all run clean
+.PHONY: all run server clean

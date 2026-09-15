@@ -20,6 +20,17 @@ void StartMenu::setActive(bool on) {
 MenuCommand StartMenu::handle(MenuEvent ev, char typed) {
     if (!active_) return MenuCommand::None;
 
+    if (page_ == Page::Host) {
+        // The dashboard has no items to navigate: enter joins the hosted
+        // server, Esc tears it down and returns to the main page.
+        if (ev == MenuEvent::Back) {
+            page_ = Page::Main;
+            return MenuCommand::StopHosting;
+        }
+        if (ev == MenuEvent::Confirm) return MenuCommand::JoinHosted;
+        return MenuCommand::None;
+    }
+
     if (page_ == Page::Join) {
         if (typed == '\b') {
             if (!address_.empty()) address_.pop_back();
@@ -81,7 +92,7 @@ void StartMenu::draw(CharGrid& grid, int fov, bool minimapOn,
                      bool fullscreenOn) const {
     if (!active_) return;
     MenuPanel panel;
-    if (page_ == Page::Main || page_ == Page::Join) {
+    if (page_ == Page::Main || page_ == Page::Join || page_ == Page::Host) {
         panel.reset(grid, kMainPanelW, kMainPanelH);
         if (page_ == Page::Main) {
             panel.putText((panel.width() - 7) / 2, 1, "ascii3d", menuui::kTitle);
@@ -93,6 +104,14 @@ void StartMenu::draw(CharGrid& grid, int fov, bool minimapOn,
                 panel.putText(3, 3 + i, items[i],
                               sel ? menuui::kItemSelected : menuui::kItem);
             }
+        } else if (page_ == Page::Host) {
+            panel.putText((panel.width() - 7) / 2, 1, "hosting",
+                          menuui::kTitle);
+            panel.putText(3, 3, "others join at:", menuui::kItem);
+            panel.putText(3, 4, hostAddress_, menuui::kItemSelected);
+            panel.putText(3, 5, "players: " + std::to_string(hostPlayers_),
+                          menuui::kItem);
+            panel.putText(3, 7, "enter: join   esc: stop", menuui::kItem);
         } else {
             panel.putText((panel.width() - 11) / 2, 1, "join server",
                           menuui::kTitle);

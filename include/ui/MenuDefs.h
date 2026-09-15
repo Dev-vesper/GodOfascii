@@ -14,7 +14,9 @@ enum class MenuCommand {
     Resume,        // in-game menu: close it
     Exit,          // any menu: quit the game
     StartOffline,  // start menu: play without a server
-    HostGame,      // start menu: spawn a local server and join it
+    HostGame,      // start menu: spawn a local server, show its dashboard
+    StopHosting,   // start menu: dashboard back -- server goes down
+    JoinHosted,    // start menu: dashboard enter -- join the hosted server
     JoinGame,      // start menu: join the typed address
     // Settings page (shared by both menus).
     FovDown,

@@ -19,5 +19,9 @@ int readSome(int fd, char* buf, int cap);
 // Sends everything; false on failure.
 bool sendAll(int fd, const char* buf, int len);
 void closeFd(int fd);
+// Best-guess LAN IPv4 of this machine, "127.0.0.1" when no route exists.
+// Sends no packets: the UDP connect only asks the OS for the default
+// route's source address.
+std::string localAddress();
 
 }  // namespace sock

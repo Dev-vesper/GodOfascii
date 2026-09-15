@@ -89,4 +89,26 @@ bool sendAll(int fd, const char* buf, int len) {
 
 void closeFd(int fd) { close(fd); }
 
+std::string localAddress() {
+    const int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) return "127.0.0.1";
+    sockaddr_in dest{};
+    dest.sin_family = AF_INET;
+    dest.sin_port = htons(80);
+    dest.sin_addr.s_addr = htonl(0x08080808);  // 8.8.8.8, never contacted
+    std::string addr = "127.0.0.1";
+    if (connect(fd, reinterpret_cast<sockaddr*>(&dest), sizeof dest) == 0) {
+        sockaddr_in src{};
+        socklen_t len = sizeof src;
+        if (getsockname(fd, reinterpret_cast<sockaddr*>(&src), &len) == 0) {
+            char buf[INET_ADDRSTRLEN] = {};
+            if (inet_ntop(AF_INET, &src.sin_addr, buf, sizeof buf) != nullptr) {
+                addr = buf;
+            }
+        }
+    }
+    close(fd);
+    return addr;
+}
+
 }  // namespace sock

@@ -7,7 +7,9 @@ A first-person raycaster drawn entirely with text characters. It runs in a plain
 *Just a for-fun project. The code was written with the help of the GLM 5.3 AI model.*
 
 <kbd> <img src="assets/screenshots/gameplay.png" /> </kbd>
+<br>
 <kbd> <img src="assets/screenshots/settings.png" /> </kbd>
+<br>
 <kbd> <img src="assets/screenshots/hosting_menu.png" /> </kbd>
 
 ![C++](https://img.shields.io/badge/C%2B%2B-00599C?style=flat&logo=c%2B%2B&logoColor=white)

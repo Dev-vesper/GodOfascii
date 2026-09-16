@@ -1,19 +1,23 @@
 <div align="center">
 
-![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square)
-![GNU Make](https://img.shields.io/badge/build-GNU%20Make-7A4AB0?style=flat-square)
-![SDL2](https://img.shields.io/badge/SDL2-optional%20backend-1E9CEA?style=flat-square&logo=SDL&logoColor=white)
-![Linux](https://img.shields.io/badge/platform-Linux-FCC624?style=flat-square&logo=linux&logoColor=black)
-![Windows](https://img.shields.io/badge/platform-Windows%2010%2B-0078D6?style=flat-square&logo=Windows&logoColor=white)
-![FreeBSD](https://img.shields.io/badge/platform-FreeBSD-AB2B28?style=flat-square&logo=freebsd&logoColor=white)
-
 # ascii3d
 
 A first-person raycaster drawn entirely with text characters. It runs in a plain terminal or in an SDL2 window, and several players can walk the same map over the LAN.
 
 *Just a for-fun project. The code was written with the help of the GLM 5.3 AI model.*
 
-<img src="assets/screenshots/corridor.png" alt="ascii3d rendering a corridor with glyph-textured walls" width="720">
+<img src="assets/screenshots/gameplay.png" alt="ascii3d rendering a corridor with glyph-textured walls" width="720">
+
+![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square)
+![GNU Make](https://img.shields.io/badge/build-GNU%20Make-7A4AB0?style=flat-square)
+![SDL2](https://img.shields.io/badge/SDL2-optional%20backend-1E9CEA?style=flat-square&logo=SDL&logoColor=white)
+
+<br>
+
+![Linux](https://img.shields.io/badge/platform-Linux-FCC624?style=flat-square&logo=linux&logoColor=black)
+![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat&logo=windows&logoColor=white)
+![FreeBSD](https://img.shields.io/badge/FreeBSD-AB2B28?style=flat&logo=freebsd&logoColor=white)
+
 
 </div>
 

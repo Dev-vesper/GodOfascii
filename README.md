@@ -171,3 +171,6 @@ Key files:
 | [src/server/main.cpp](src/server/main.cpp) | the relay server |
 | [Makefile](Makefile) | build, SDL autodetection, run and server targets |
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=dev-vesper/godofascii&type=date&legend=top-left)](https://www.star-history.com/?repos=dev-vesper%2Fgodofascii&type=date&legend=top-left)

@@ -163,3 +163,4 @@ Key files:
 | [src/net/NetClient.cpp](src/net/NetClient.cpp) | non-blocking client, one poll per frame |
 | [src/server/main.cpp](src/server/main.cpp) | the relay server |
 | [Makefile](Makefile) | build, SDL autodetection, run and server targets |
+

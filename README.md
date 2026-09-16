@@ -2,7 +2,7 @@
 
 # ascii3d
 
-A first-person raycaster drawn entirely with text characters. It runs in a plain terminal or in an SDL2 window, and several players can walk the same map over the LAN.
+**A first-person raycaster drawn entirely with text characters. It runs in a plain terminal or in an SDL2 window, and several players can walk the same map over the LAN.**
 
 *Just a for-fun project. The code was written with the help of the GLM 5.3 AI model.*
 

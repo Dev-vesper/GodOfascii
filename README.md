@@ -6,7 +6,9 @@ A first-person raycaster drawn entirely with text characters. It runs in a plain
 
 *Just a for-fun project. The code was written with the help of the GLM 5.3 AI model.*
 
-<img src="assets/screenshots/gameplay.png" alt="ascii3d rendering a corridor with glyph-textured walls" width="720">
+<kbd> <img src="assets/screenshots/gameplay.png" /> </kbd>
+<kbd> <img src="assets/screenshots/settings.png" /> </kbd>
+<kbd> <img src="assets/screenshots/hosting_menu.png" /> </kbd>
 
 ![C++](https://img.shields.io/badge/C%2B%2B-00599C?style=flat&logo=c%2B%2B&logoColor=white)
 ![GNU Make](https://img.shields.io/badge/build-GNU%20Make-7A4AB0?style=flat-square)

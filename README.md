@@ -11,9 +11,7 @@ A first-person raycaster drawn entirely with text characters. It runs in a plain
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square)
 ![GNU Make](https://img.shields.io/badge/build-GNU%20Make-7A4AB0?style=flat-square)
 ![SDL2](https://img.shields.io/badge/SDL2-optional%20backend-1E9CEA?style=flat-square&logo=SDL&logoColor=white)
-
 <br>
-
 ![Linux](https://img.shields.io/badge/platform-Linux-FCC624?style=flat-square&logo=linux&logoColor=black)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat&logo=windows&logoColor=white)
 ![FreeBSD](https://img.shields.io/badge/FreeBSD-AB2B28?style=flat&logo=freebsd&logoColor=white)

@@ -1,4 +1,5 @@
 <div align="center">
+
 # ascii3d
 
 A first-person raycaster drawn entirely with text characters. It runs in a plain terminal or in an SDL2 window, and several players can walk the same map over the LAN.
@@ -10,6 +11,7 @@ A first-person raycaster drawn entirely with text characters. It runs in a plain
 <kbd> <img src="assets/screenshots/settings.png" /> </kbd>
 
 <kbd> <img src="assets/screenshots/hosting_menu.png" /> </kbd>
+
 
 ![C++](https://img.shields.io/badge/C%2B%2B-00599C?style=flat&logo=c%2B%2B&logoColor=white)
 ![GNU Make](https://img.shields.io/badge/build-GNU%20Make-7A4AB0?style=flat-square)

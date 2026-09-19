@@ -7,8 +7,8 @@
 *Just a for-fun project. The code was written with the help of the GLM 5.3 AI model.*
 
 ![C++](https://img.shields.io/badge/C%2B%2B-00599C?style=flat&logo=c%2B%2B&logoColor=white)
-![GNU Make](https://img.shields.io/badge/build-GNU%20Make-7A4AB0?style=flat-square)
-![SDL2](https://img.shields.io/badge/SDL2-optional%20backend-1E9CEA?style=flat-square&logo=SDL&logoColor=white)
+![GNU Make](https://img.shields.io/badge/build-GNU%20Make-7A4AB0)
+![SDL2](https://img.shields.io/badge/SDL2-optional%20backend-1E9CEA?logo=SDL&logoColor=white)
 <br>
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat&logo=windows&logoColor=white)
